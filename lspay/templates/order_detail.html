@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_tag, mask, csrf_field %}
+{% block title %}訂單 {{ o.order_sid }}{% endblock %}
+{% block content %}
+<h1>{{ o.type_label }}訂單 {{ o.order_sid }} {{ status_tag(o) }}</h1>
+<div class="card">
+<dl class="kv">
+  <dt>商戶 / 商戶單號</dt><dd>{{ o.merchant.name }} / {{ o.order_id }}</dd>
+  <dt>會員</dt><dd>{% if o.member_id %}<a href="/admin/members/{{ o.member_id }}">{{ o.payer }}</a>{% else %}{{ o.payer }}{% endif %}
+      　電話 {{ o.payer_cellphone }}　身分證 {{ mask(o.payer_pid) }}</dd>
+  <dt>金額 / 手續費</dt><dd><b>{{ o.amount }}</b> / {{ o.fee }}</dd>
+  {% if o.type == m.TYPE_RECEIVE %}
+  <dt>收款帳戶</dt><dd>{% if o.receiving_account %}{{ o.bank_code }} {{ o.bank_name }} {{ o.bank_title }} {{ o.bank_no }}{% else %}<span class="warn">未配對（沒有可用收款帳戶）</span>{% endif %}</dd>
+  <dt>會員登記轉出帳戶</dt><dd>
+    {% for c, n in declared %}<code>{{ c }}-{{ n }}</code> {% endfor %}
+    {% if o.member %}{% for a in o.member.bank_accounts %}{% if (a.bank_code, a.bank_no) not in declared %}<code>{{ a.bank_code }}-{{ a.bank_no }}</code> {% endif %}{% endfor %}{% endif %}
+    {% if o.bank_no_check_title %}<span class="muted">戶名：{{ o.bank_no_check_title }}</span>{% endif %}
+  </dd>
+  {% if o.paid_from_bank_no %}<dt>實際轉出帳戶</dt><dd>{{ o.paid_from_bank_code }}-{{ o.paid_from_bank_no }}　到帳 {{ o.paid_amount }}</dd>{% endif %}
+  <dt>截止時間</dt><dd>{{ fmt(o.end_time) or '' }}</dd>
+  {% else %}
+  <dt>收款人</dt><dd>{{ o.bank_title }}　{{ o.bank_name }} {{ o.bank_branch }}　<code>{{ o.bank_no }}</code></dd>
+  <dt>審核</dt><dd>{{ o.review_label }}</dd>
+  {% endif %}
+  {% for w in warnings %}<dt class="warn">⚠️</dt><dd class="warn">{{ w }}</dd>{% endfor %}
+  <dt>處理人 / 車隊</dt><dd>{{ o.handled_by.label if o.handled_by else '' }} {{ ('/ ' ~ o.team.name) if o.team else '' }}</dd>
+  <dt>備註</dt><dd class="wrap">{{ o.review_note }}</dd>
+  <dt>建立 / 完成</dt><dd>{{ fmt(o.init_time) }} / {{ fmt(o.finish_time) or '' }}</dd>
+  <dt>回調</dt><dd class="wrap">{{ o.callback }}<br>
+    <span class="{{ 'bad-text' if o.callback_status == 'failed' }}">{{ {'pending':'等待發送','ok':'成功','failed':'失敗','':'—'}[o.callback_status] }}</span>
+    （{{ o.callback_attempts }} 次）<span class="muted">{{ o.callback_last_response }}</span></dd>
+  <dt>回調訊息</dt><dd>{{ o.message }}</dd>
+</dl>
+</div>
+
+{% if user.role in ('admin', 'reviewer') and not o.is_final %}
+<div class="card">
+{% if o.type == m.TYPE_RECEIVE %}
+  <h2 style="margin-top:0">確認入帳</h2>
+  <p class="muted">依銀行入帳明細填寫實際轉出帳戶與金額，系統會比對會員登記的帳戶。資料不符將不會入帳。</p>
+  <form method="post" action="/admin/order/{{ o.order_sid }}/confirm" class="form-grid">
+    {{ csrf_field(csrf) }}
+    <label>轉出銀行代碼<input name="bank_code" required maxlength="3" placeholder="822"></label>
+    <label>轉出帳號<input name="bank_no" required></label>
+    <label>到帳金額<input name="amount" required value="{{ o.amount }}"></label>
+    {% if user.role == 'admin' %}<label>強制入帳（資料不符時）<select name="force"><option value="">否</option><option value="1">是</option></select></label>{% endif %}
+    <label>備註<input name="note"></label>
+    <div><button class="ok" type="submit">確認入帳</button></div>
+  </form>
+  <h2>標記失敗</h2>
+  <form method="post" action="/admin/order/{{ o.order_sid }}/fail" class="form-grid">
+    {{ csrf_field(csrf) }}
+    <label>狀態<select name="status">
+      <option value="91">收款超時</option><option value="92">金額不符</option><option value="95">訂單無效</option><option value="96">駁回單</option>
+    </select></label>
+    <label>原因<input name="note" required></label>
+    <div><button class="bad" type="submit">送出</button></div>
+  </form>
+{% else %}
+  {% if o.review_status == 'pending' %}
+  <h2 style="margin-top:0">審核</h2>
+  <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/approve">{{ csrf_field(csrf) }}<input name="note" placeholder="備註（選填）"> <button class="ok">審核通過</button></form>
+  <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/reject" style="margin-left:16px">{{ csrf_field(csrf) }}<input name="note" placeholder="駁回原因" required> <button class="bad">駁回</button></form>
+  {% elif o.review_status == 'approved' %}
+  <h2 style="margin-top:0">出款</h2>
+  <p>請從公司帳戶轉出 <b>{{ o.amount }}</b> 給 {{ o.bank_title }}（{{ o.bank_name }} <code>{{ o.bank_no }}</code>），完成後按「已出款」。</p>
+  <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/paid" onsubmit="return confirm('確認已出款？')">{{ csrf_field(csrf) }}<input name="note" placeholder="轉帳備註（選填）"> <button class="ok">已出款</button></form>
+  <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/payfail" style="margin-left:16px">{{ csrf_field(csrf) }}<input name="note" placeholder="失敗原因" required> <button class="bad">出款失敗</button></form>
+  {% endif %}
+{% endif %}
+</div>
+{% endif %}
+
+{% if o.is_final and o.callback and user.role in ('admin', 'reviewer') %}
+<form method="post" action="/admin/order/{{ o.order_sid }}/resend">{{ csrf_field(csrf) }}<button class="sec">補發回調</button></form>
+{% endif %}
+
+<h2>處理紀錄</h2>
+<div class="tablewrap"><table>
+<tr><th>時間</th><th>來源</th><th>操作人</th><th>動作</th><th>狀態</th><th>備註</th></tr>
+{% for e in o.events %}
+<tr><td>{{ fmt(e.created_at) }}</td><td>{{ e.source }}</td><td>{{ e.actor }}</td><td>{{ e.action }}</td>
+<td>{% if e.to_status is not none %}{{ STATUS_LABELS.get(e.from_status, '') if e.from_status is not none }} → {{ STATUS_LABELS.get(e.to_status, e.to_status) }}{% endif %}</td>
+<td class="wrap">{{ e.note }}</td></tr>
+{% endfor %}
+</table></div>
+{% endblock %}

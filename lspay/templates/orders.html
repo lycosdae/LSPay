@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_tag, pager, csrf_field %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<form class="filters" method="get">
+  <input name="q" value="{{ f.q }}" placeholder="單號 / 會員 / 身分證 / 帳號">
+  <select name="merchant_id"><option value="">全部商戶</option>
+    {% for mc in merchants %}<option value="{{ mc.id }}" {{ 'selected' if f.merchant_id == mc.id|string }}>{{ mc.name }}</option>{% endfor %}
+  </select>
+  {% if view != 'pending' %}
+  <select name="status"><option value="">全部狀態</option>
+    {% for k, v in STATUS_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if f.status == k|string }}>{{ v }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  <input type="date" name="date_from" value="{{ f.date_from }}"> ~ <input type="date" name="date_to" value="{{ f.date_to }}">
+  <button type="submit">查詢</button>
+  <span class="muted">共 {{ total }} 筆，金額 {{ sum_amount }}，手續費 {{ sum_fee }}</span>
+</form>
+<div class="tablewrap"><table>
+<tr>
+  <th>系統單號</th><th>商戶單號</th><th>商戶</th><th>會員</th><th class="num">金額</th><th class="num">手續費</th>
+  {% if view == 'receive' %}<th>收款帳戶</th>{% else %}<th>收款人 / 帳號</th>{% endif %}
+  <th>狀態</th><th>處理人</th><th>建立時間</th><th>完成時間</th>{% if view == 'pending' %}<th>操作</th>{% endif %}
+</tr>
+{% for o in rows %}
+<tr>
+  <td><a href="/admin/order/{{ o.order_sid }}">{{ o.order_sid }}</a></td>
+  <td>{{ o.order_id }}</td>
+  <td>{{ o.merchant.name }}</td>
+  <td>{% if o.member_id %}<a href="/admin/members/{{ o.member_id }}">{{ o.payer }}</a>{% else %}{{ o.payer }}{% endif %}</td>
+  <td class="num">{{ o.amount }}</td>
+  <td class="num">{{ o.fee }}</td>
+  {% if view == 'receive' %}<td>{{ o.bank_name }} {{ o.bank_no[-5:] if o.bank_no }}</td>
+  {% else %}<td>{{ o.bank_title }} {{ o.bank_name }} {{ o.bank_no }}
+    {% for w in warnings.get(o.id, []) %}<div class="warn">⚠️ {{ w }}</div>{% endfor %}</td>{% endif %}
+  <td>{{ status_tag(o) }}</td>
+  <td>{{ o.handled_by.label if o.handled_by else '' }}</td>
+  <td>{{ fmt(o.init_time) }}</td>
+  <td>{{ fmt(o.finish_time) or '' }}</td>
+  {% if view == 'pending' %}
+  <td>
+    {% if o.review_status == 'pending' %}
+      <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/approve">{{ csrf_field(csrf) }}<button class="ok">通過</button></form>
+      <a href="/admin/order/{{ o.order_sid }}">駁回…</a>
+    {% elif o.review_status == 'approved' %}
+      <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/paid" onsubmit="return confirm('確認已從公司帳戶轉出 {{ o.amount }} 給 {{ o.bank_title }}？')">{{ csrf_field(csrf) }}<button>已出款</button></form>
+    {% endif %}
+  </td>
+  {% endif %}
+</tr>
+{% else %}
+<tr><td colspan="12" class="muted">沒有資料</td></tr>
+{% endfor %}
+</table></div>
+{{ pager(page, pages, 'q=' ~ f.q|urlencode ~ '&merchant_id=' ~ f.merchant_id ~ '&status=' ~ f.status ~ '&date_from=' ~ f.date_from ~ '&date_to=' ~ f.date_to) }}
+{% endblock %}

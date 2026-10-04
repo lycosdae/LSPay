@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}LSPay{% endblock %} · LSPay</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="layout">
+<nav class="side">
+  <div class="brand">LSPay 後台</div>
+  {% set p = request.url.path %}
+  <a href="/admin" class="{{ 'on' if p == '/admin' }}">儀表板</a>
+  <div class="sec">會員</div>
+  <a href="/admin/members" class="{{ 'on' if p.startswith('/admin/members') }}">會員列表</a>
+  <div class="sec">車隊</div>
+  <a href="/admin/teams" class="{{ 'on' if p == '/admin/teams' }}">車隊</a>
+  <a href="/admin/team-orders" class="{{ 'on' if p == '/admin/team-orders' }}">車隊跑單</a>
+  <div class="sec">訂單</div>
+  <a href="/admin/orders/receive" class="{{ 'on' if p == '/admin/orders/receive' }}">收款訂單</a>
+  <a href="/admin/orders/withdraw" class="{{ 'on' if p == '/admin/orders/withdraw' }}">付款訂單</a>
+  <a href="/admin/orders/pending" class="{{ 'on' if p == '/admin/orders/pending' }}">待審核付款訂單</a>
+  <div class="sec">系統</div>
+  <a href="/admin/users" class="{{ 'on' if p == '/admin/users' }}">用戶資料</a>
+  {% if user and user.role == 'admin' %}
+  <a href="/admin/merchants" class="{{ 'on' if p == '/admin/merchants' }}">商戶</a>
+  <a href="/admin/accounts" class="{{ 'on' if p == '/admin/accounts' }}">收款帳戶</a>
+  {% endif %}
+  <form method="post" action="/admin/logout">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="muted" style="margin-bottom:6px">{{ user.label }}（{{ ROLE_LABELS[user.role] }}）</div>
+    <button class="sec" type="submit">登出</button>
+  </form>
+</nav>
+<main>
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+</div>
+</body>
+</html>

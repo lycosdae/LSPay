@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_tag, csrf_field %}
+{% block title %}會員 {{ mb.name }}{% endblock %}
+{% block content %}
+<h1>會員：{{ mb.name }}</h1>
+<div class="card">
+  <form method="post" action="/admin/members/{{ mb.id }}" class="form-grid">
+    {{ csrf_field(csrf) }}
+    <label>商戶<input value="{{ mb.merchant.name }}" disabled></label>
+    <label>身分證號<input value="{{ mb.pid }}" disabled></label>
+    <label>姓名<input name="name" value="{{ mb.name }}" required maxlength="15"></label>
+    <label>電話<input name="phone" value="{{ mb.phone }}"></label>
+    <label>車隊<select name="team_id"><option value="">—</option>{% for t in teams %}<option value="{{ t.id }}" {{ 'selected' if mb.team_id == t.id }}>{{ t.name }}</option>{% endfor %}</select></label>
+    <label>狀態<select name="status"><option value="active">正常</option><option value="blocked" {{ 'selected' if mb.status == 'blocked' }}>停用</option></select></label>
+    <label>備註<input name="note" value="{{ mb.note }}"></label>
+    <div><button type="submit">儲存</button></div>
+  </form>
+</div>
+<h2>登記銀行帳戶</h2>
+<p class="muted">玩家入金時，實際轉出帳戶必須是這裡的帳戶之一（或該訂單 bank_no_check 帶入的帳戶）。</p>
+<div class="tablewrap"><table>
+<tr><th>銀行代碼</th><th>帳號</th><th>戶名</th><th>建立時間</th><th></th></tr>
+{% for a in mb.bank_accounts %}
+<tr><td>{{ a.bank_code }}</td><td>{{ a.bank_no }}</td><td>{{ a.account_name }}</td><td>{{ fmt(a.created_at) }}</td>
+<td>{% if user.role in ('admin','reviewer') %}<form class="inline" method="post" action="/admin/members/{{ mb.id }}/accounts/{{ a.id }}/delete" onsubmit="return confirm('刪除此帳戶？')">{{ csrf_field(csrf) }}<button class="sec">刪除</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">尚無帳戶</td></tr>{% endfor %}
+</table></div>
+<form method="post" action="/admin/members/{{ mb.id }}/accounts" class="filters" style="margin-top:10px">
+  {{ csrf_field(csrf) }}
+  <input name="bank_code" placeholder="銀行代碼" maxlength="3" required>
+  <input name="bank_no" placeholder="帳號" required>
+  <input name="account_name" placeholder="戶名" value="{{ mb.name }}">
+  <button type="submit">新增帳戶</button>
+</form>
+<h2>最近訂單</h2>
+<div class="tablewrap"><table>
+<tr><th>系統單號</th><th>類型</th><th class="num">金額</th><th>狀態</th><th>建立時間</th></tr>
+{% for o in orders %}
+<tr><td><a href="/admin/order/{{ o.order_sid }}">{{ o.order_sid }}</a></td><td>{{ o.type_label }}</td><td class="num">{{ o.amount }}</td><td>{{ status_tag(o) }}</td><td>{{ fmt(o.init_time) }}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">沒有訂單</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

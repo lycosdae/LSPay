@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block title %}車隊{% endblock %}
+{% block content %}
+<h1>車隊</h1>
+<p class="muted">車隊是內部的客服與審單小組。綁定 Telegram 群組後，該車隊會員的訂單會推送到該群組。成員在「用戶資料」設定。</p>
+<div class="tablewrap"><table>
+<tr><th>名稱</th><th>負責人</th><th>Telegram 群組 ID</th><th>成員</th><th>會員數</th><th>備註</th><th>啟用</th>{% if user.role == 'admin' %}<th></th>{% endif %}</tr>
+{% for t in teams %}
+<tr>
+{% if user.role == 'admin' %}
+  {% set fid = 'team-' ~ t.id %}
+  <td><input form="{{ fid }}" name="name" value="{{ t.name }}" required size="10"></td>
+  <td><input form="{{ fid }}" name="leader" value="{{ t.leader }}" size="8"></td>
+  <td><input form="{{ fid }}" name="tg_chat_id" value="{{ t.tg_chat_id }}" size="14"></td>
+  <td class="wrap">{{ t.users|map(attribute='label')|join('、') }}</td>
+  <td>{{ member_counts.get(t.id, 0) }}</td>
+  <td><input form="{{ fid }}" name="note" value="{{ t.note }}"></td>
+  <td><input form="{{ fid }}" type="checkbox" name="enabled" value="1" {{ 'checked' if t.enabled }}></td>
+  <td><form id="{{ fid }}" method="post" action="/admin/teams">{{ csrf_field(csrf) }}<input type="hidden" name="team_id" value="{{ t.id }}"><button type="submit">儲存</button></form></td>
+{% else %}
+  <td>{{ t.name }}</td><td>{{ t.leader }}</td><td>{{ t.tg_chat_id }}</td><td class="wrap">{{ t.users|map(attribute='label')|join('、') }}</td>
+  <td>{{ member_counts.get(t.id, 0) }}</td><td>{{ t.note }}</td><td>{{ '是' if t.enabled else '否' }}</td>
+{% endif %}
+</tr>
+{% else %}<tr><td colspan="8" class="muted">尚無車隊</td></tr>{% endfor %}
+</table></div>
+{% if user.role == 'admin' %}
+<h2>新增車隊</h2>
+<form method="post" action="/admin/teams" class="filters">
+  {{ csrf_field(csrf) }}
+  <input name="name" placeholder="名稱" required>
+  <input name="leader" placeholder="負責人">
+  <input name="tg_chat_id" placeholder="Telegram 群組 ID（如 -100…）">
+  <input name="note" placeholder="備註">
+  <button type="submit">新增</button>
+</form>
+{% endif %}
+{% endblock %}
