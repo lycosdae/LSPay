@@ -4,7 +4,7 @@
 {% block content %}
 <h1>會員：{{ mb.name }}</h1>
 <div class="card">
-  <form method="post" action="/admin/members/{{ mb.id }}" class="form-grid">
+  <form method="post" action="{{ admin }}/members/{{ mb.id }}" class="form-grid">
     {{ csrf_field(csrf) }}
     <label>商戶<input value="{{ mb.merchant.name }}" disabled></label>
     <label>身分證號<input value="{{ mb.pid }}" disabled></label>
@@ -22,10 +22,10 @@
 <tr><th>銀行代碼</th><th>帳號</th><th>戶名</th><th>建立時間</th><th></th></tr>
 {% for a in mb.bank_accounts %}
 <tr><td>{{ a.bank_code }}</td><td>{{ a.bank_no }}</td><td>{{ a.account_name }}</td><td>{{ fmt(a.created_at) }}</td>
-<td>{% if user.role in ('admin','reviewer') %}<form class="inline" method="post" action="/admin/members/{{ mb.id }}/accounts/{{ a.id }}/delete" onsubmit="return confirm('刪除此帳戶？')">{{ csrf_field(csrf) }}<button class="sec">刪除</button></form>{% endif %}</td></tr>
+<td>{% if user.role in ('admin','reviewer') %}<form class="inline" method="post" action="{{ admin }}/members/{{ mb.id }}/accounts/{{ a.id }}/delete" onsubmit="return confirm('刪除此帳戶？')">{{ csrf_field(csrf) }}<button class="sec">刪除</button></form>{% endif %}</td></tr>
 {% else %}<tr><td colspan="5" class="muted">尚無帳戶</td></tr>{% endfor %}
 </table></div>
-<form method="post" action="/admin/members/{{ mb.id }}/accounts" class="filters" style="margin-top:10px">
+<form method="post" action="{{ admin }}/members/{{ mb.id }}/accounts" class="filters" style="margin-top:10px">
   {{ csrf_field(csrf) }}
   <input name="bank_code" placeholder="銀行代碼" maxlength="3" required>
   <input name="bank_no" placeholder="帳號" required>
@@ -36,7 +36,7 @@
 <div class="tablewrap"><table>
 <tr><th>系統單號</th><th>類型</th><th class="num">金額</th><th>狀態</th><th>建立時間</th></tr>
 {% for o in orders %}
-<tr><td><a href="/admin/order/{{ o.order_sid }}">{{ o.order_sid }}</a></td><td>{{ o.type_label }}</td><td class="num">{{ o.amount }}</td><td>{{ status_tag(o) }}</td><td>{{ fmt(o.init_time) }}</td></tr>
+<tr><td><a href="{{ admin }}/order/{{ o.order_sid }}">{{ o.order_sid }}</a></td><td>{{ o.type_label }}</td><td class="num">{{ o.amount }}</td><td>{{ status_tag(o) }}</td><td>{{ fmt(o.init_time) }}</td></tr>
 {% else %}<tr><td colspan="5" class="muted">沒有訂單</td></tr>{% endfor %}
 </table></div>
 {% endblock %}

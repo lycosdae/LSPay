@@ -6,7 +6,7 @@
 <div class="card">
 <dl class="kv">
   <dt>商戶 / 商戶單號</dt><dd>{{ o.merchant.name }} / {{ o.order_id }}</dd>
-  <dt>會員</dt><dd>{% if o.member_id %}<a href="/admin/members/{{ o.member_id }}">{{ o.payer }}</a>{% else %}{{ o.payer }}{% endif %}
+  <dt>會員</dt><dd>{% if o.member_id %}<a href="{{ admin }}/members/{{ o.member_id }}">{{ o.payer }}</a>{% else %}{{ o.payer }}{% endif %}
       　電話 {{ o.payer_cellphone }}　身分證 {{ mask(o.payer_pid) }}</dd>
   <dt>金額 / 手續費</dt><dd><b>{{ o.amount }}</b> / {{ o.fee }}</dd>
   {% if o.type == m.TYPE_RECEIVE %}
@@ -38,7 +38,7 @@
 {% if o.type == m.TYPE_RECEIVE %}
   <h2 style="margin-top:0">確認入帳</h2>
   <p class="muted">依銀行入帳明細填寫實際轉出帳戶與金額，系統會比對會員登記的帳戶。資料不符將不會入帳。</p>
-  <form method="post" action="/admin/order/{{ o.order_sid }}/confirm" class="form-grid">
+  <form method="post" action="{{ admin }}/order/{{ o.order_sid }}/confirm" class="form-grid">
     {{ csrf_field(csrf) }}
     <label>轉出銀行代碼<input name="bank_code" required maxlength="3" placeholder="822"></label>
     <label>轉出帳號<input name="bank_no" required></label>
@@ -48,7 +48,7 @@
     <div><button class="ok" type="submit">確認入帳</button></div>
   </form>
   <h2>標記失敗</h2>
-  <form method="post" action="/admin/order/{{ o.order_sid }}/fail" class="form-grid">
+  <form method="post" action="{{ admin }}/order/{{ o.order_sid }}/fail" class="form-grid">
     {{ csrf_field(csrf) }}
     <label>狀態<select name="status">
       <option value="91">收款超時</option><option value="92">金額不符</option><option value="95">訂單無效</option><option value="96">駁回單</option>
@@ -59,20 +59,20 @@
 {% else %}
   {% if o.review_status == 'pending' %}
   <h2 style="margin-top:0">審核</h2>
-  <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/approve">{{ csrf_field(csrf) }}<input name="note" placeholder="備註（選填）"> <button class="ok">審核通過</button></form>
-  <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/reject" style="margin-left:16px">{{ csrf_field(csrf) }}<input name="note" placeholder="駁回原因" required> <button class="bad">駁回</button></form>
+  <form class="inline" method="post" action="{{ admin }}/order/{{ o.order_sid }}/approve">{{ csrf_field(csrf) }}<input name="note" placeholder="備註（選填）"> <button class="ok">審核通過</button></form>
+  <form class="inline" method="post" action="{{ admin }}/order/{{ o.order_sid }}/reject" style="margin-left:16px">{{ csrf_field(csrf) }}<input name="note" placeholder="駁回原因" required> <button class="bad">駁回</button></form>
   {% elif o.review_status == 'approved' %}
   <h2 style="margin-top:0">出款</h2>
   <p>請從公司帳戶轉出 <b>{{ o.amount }}</b> 給 {{ o.bank_title }}（{{ o.bank_name }} <code>{{ o.bank_no }}</code>），完成後按「已出款」。</p>
-  <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/paid" onsubmit="return confirm('確認已出款？')">{{ csrf_field(csrf) }}<input name="note" placeholder="轉帳備註（選填）"> <button class="ok">已出款</button></form>
-  <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/payfail" style="margin-left:16px">{{ csrf_field(csrf) }}<input name="note" placeholder="失敗原因" required> <button class="bad">出款失敗</button></form>
+  <form class="inline" method="post" action="{{ admin }}/order/{{ o.order_sid }}/paid" onsubmit="return confirm('確認已出款？')">{{ csrf_field(csrf) }}<input name="note" placeholder="轉帳備註（選填）"> <button class="ok">已出款</button></form>
+  <form class="inline" method="post" action="{{ admin }}/order/{{ o.order_sid }}/payfail" style="margin-left:16px">{{ csrf_field(csrf) }}<input name="note" placeholder="失敗原因" required> <button class="bad">出款失敗</button></form>
   {% endif %}
 {% endif %}
 </div>
 {% endif %}
 
 {% if o.is_final and o.callback and user.role in ('admin', 'reviewer') %}
-<form method="post" action="/admin/order/{{ o.order_sid }}/resend">{{ csrf_field(csrf) }}<button class="sec">補發回調</button></form>
+<form method="post" action="{{ admin }}/order/{{ o.order_sid }}/resend">{{ csrf_field(csrf) }}<button class="sec">補發回調</button></form>
 {% endif %}
 
 <h2>處理紀錄</h2>

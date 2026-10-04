@@ -2,6 +2,7 @@ import asyncio
 import hmac
 import logging
 import pathlib
+import re
 import secrets
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,7 @@ from . import callbacks, db, services, telegram
 from .api.merchant import router as merchant_router
 from .config import settings
 from .web.auth import LoginRequired
+from .web.routes import public_router
 from .web.routes import router as web_router
 
 log = logging.getLogger("lspay")
@@ -52,6 +54,10 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    if not re.fullmatch(r"/[A-Za-z0-9_-]+", settings.admin_path):
+        raise RuntimeError("ADMIN_PATH may only contain letters, digits, '-' and '_'")
+    if settings.admin_path == "/admin":
+        log.warning("ADMIN_PATH is not set; the admin web is at the guessable /admin")
     if not settings.session_secret:
         log.warning("SESSION_SECRET is not set; using a random one (sessions reset on restart)")
     app = FastAPI(title="LSPay", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
@@ -60,6 +66,7 @@ def create_app() -> FastAPI:
         secret_key=settings.session_secret or secrets.token_hex(32),
         session_cookie="lspay_session",
         same_site="strict",
+        path=settings.admin_path,
         https_only=settings.cookie_secure,
         max_age=12 * 3600,
     )
@@ -67,14 +74,18 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     app.include_router(merchant_router)
     app.include_router(web_router)
+    app.include_router(public_router)
 
     @app.exception_handler(LoginRequired)
     async def _login_required(request: Request, exc: LoginRequired):
-        return RedirectResponse("/admin/login", status_code=303)
+        return RedirectResponse(settings.admin_path + "/login", status_code=303)
 
-    @app.get("/")
-    def root():
-        return RedirectResponse("/admin", status_code=303)
+    @app.middleware("http")
+    async def _no_index(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        response.headers["Referrer-Policy"] = "same-origin"
+        return response
 
     @app.get("/healthz")
     def healthz():

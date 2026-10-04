@@ -18,9 +18,9 @@
   <td><input form="{{ fid }}" name="ip_whitelist" value="{{ mc.ip_whitelist }}" placeholder="空白=不限制"></td>
   <td><input form="{{ fid }}" type="checkbox" name="enabled" value="1" {{ 'checked' if mc.enabled }}></td>
   <td>
-    <form id="{{ fid }}" class="inline" method="post" action="/admin/merchants">{{ csrf_field(csrf) }}<input type="hidden" name="merchant_id" value="{{ mc.id }}"><button type="submit">儲存</button></form>
-    <form class="inline" method="post" action="/admin/merchants/{{ mc.id }}/keys">{{ csrf_field(csrf) }}<button class="sec">查看金鑰</button></form>
-    <form class="inline" method="post" action="/admin/merchants/{{ mc.id }}/keys" onsubmit="return confirm('更換後舊金鑰立即失效，確定？')">{{ csrf_field(csrf) }}<input type="hidden" name="rotate" value="1"><button class="bad">更換金鑰</button></form>
+    <form id="{{ fid }}" class="inline" method="post" action="{{ admin }}/merchants">{{ csrf_field(csrf) }}<input type="hidden" name="merchant_id" value="{{ mc.id }}"><button type="submit">儲存</button></form>
+    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/keys">{{ csrf_field(csrf) }}<button class="sec">查看金鑰</button></form>
+    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/keys" onsubmit="return confirm('更換後舊金鑰立即失效，確定？')">{{ csrf_field(csrf) }}<input type="hidden" name="rotate" value="1"><button class="bad">更換金鑰</button></form>
   </td>
 </tr>
 {% if reveal == mc.id %}
@@ -33,7 +33,7 @@
 </table></div>
 
 <h2>新增商戶</h2>
-<form method="post" action="/admin/merchants" class="filters">
+<form method="post" action="{{ admin }}/merchants" class="filters">
   {{ csrf_field(csrf) }}
   <input name="name" placeholder="商戶名稱" required>
   <input name="receive_fee_rate" placeholder="收款費率 %" value="0" size="6">
@@ -45,7 +45,7 @@
 
 <h2>調整餘額</h2>
 <p class="muted">用於商戶結算、儲值或修正。正數為加，負數為減，會寫入操作日誌。</p>
-<form method="post" id="bal" class="filters" onsubmit="this.action='/admin/merchants/'+this.mid.value+'/balance'">
+<form method="post" id="bal" class="filters" onsubmit="this.action='{{ admin }}/merchants/'+this.mid.value+'/balance'">
   {{ csrf_field(csrf) }}
   <select name="mid">{% for mc in merchants %}<option value="{{ mc.id }}">{{ mc.name }}</option>{% endfor %}</select>
   <input name="delta" placeholder="金額，如 10000 或 -500" required>

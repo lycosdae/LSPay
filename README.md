@@ -40,17 +40,18 @@ LSPay 是金流後台，商戶 API 與 FuturePay v1s 相容。遊戲網站只需
 pip install -r requirements-dev.txt
 DATABASE_URL=sqlite:///./demo.db python scripts/demo_seed.py   # 示範資料：admin / admin1234
 DATABASE_URL=sqlite:///./demo.db SESSION_SECRET=dev uvicorn lspay.main:app --reload
-# 開啟 http://localhost:8000/admin
+# 開啟 http://localhost:8000/admin （沒設 ADMIN_PATH 時的預設路徑，僅限本機試用）
 pytest
 ```
 
 ## 正式部署
 
-1. 執行 `cp .env.example .env`，填入資料庫密碼、`BASE_URL`、`SESSION_SECRET`，以及要用的 Telegram 設定。
+1. 執行 `cp .env.example .env`，填入資料庫密碼、`BASE_URL`、`SESSION_SECRET`、`ADMIN_PATH`，以及要用的 Telegram 設定。
+   - `ADMIN_PATH` 是後台的隱藏網址，例如設成 `console-Xk82hQ`，後台就在 `https://<網域>/console-Xk82hQ/`。只有拿到這個網址的人才找得到登入頁，`/admin` 和其他路徑一律回 404。網址只給需要的人，外洩時改掉這個值並重啟即可。
 2. 執行 `docker compose up -d --build`。
 3. 執行 `docker compose exec app python -m lspay.cli create-admin <帳號>` 建立第一個管理員。
 4. 在前面架一層 HTTPS 反向代理（nginx 或 Caddy），轉發到 `127.0.0.1:8000`。商戶 IP 白名單判斷的是代理轉過來的真實 IP。
-5. 登入後台，依序建立收款帳戶、商戶（系統會自動產生 Client SID、API Key、Sign Key，請立即複製）、車隊與用戶。
+5. 用 `https://<網域>/<ADMIN_PATH>/` 登入後台，依序建立收款帳戶、商戶（系統會自動產生 Client SID、API Key、Sign Key，請立即複製）、車隊與用戶。
 6. 如果要用 Telegram：
    - 用 @BotFather 建立 bot，把 bot 加進群組，將群組 ID 填入 `TELEGRAM_CHAT_ID` 或各車隊的設定。
    - 執行 `docker compose exec app python -m lspay.cli set-telegram-webhook https://<你的網域>/telegram/webhook`。

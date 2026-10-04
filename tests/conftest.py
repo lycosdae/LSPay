@@ -3,6 +3,7 @@ import os
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["SWEEP_INTERVAL_SECONDS"] = "0"
 os.environ["SESSION_SECRET"] = "test-secret"
+os.environ["ADMIN_PATH"] = "console-t3st"
 os.environ["TELEGRAM_BOT_TOKEN"] = ""
 os.environ["TELEGRAM_CHAT_ID"] = "-1001"
 os.environ["TELEGRAM_WEBHOOK_SECRET"] = "hook-secret"
@@ -100,4 +101,5 @@ def signed(params: dict, sign_key: str = "signkey456") -> dict:
     return {**params, "sign": api_sign(params, sign_key)}
 
 
+ADMIN = "/console-t3st"
 HEADERS = {"CLIENTSID": "0001", "ACCESSTOKEN": "apikey123"}

@@ -3,9 +3,9 @@
 {% block content %}
 <h1>儀表板</h1>
 <div class="grid">
-  <div class="card stat"><div class="n">{{ pending }}</div><div class="l"><a href="/admin/orders/pending">待審核付款訂單</a></div></div>
+  <div class="card stat"><div class="n">{{ pending }}</div><div class="l"><a href="{{ admin }}/orders/pending">待審核付款訂單</a></div></div>
   <div class="card stat"><div class="n">{{ to_pay }}</div><div class="l">已審核待出款</div></div>
-  <div class="card stat"><div class="n">{{ open_receive }}</div><div class="l"><a href="/admin/orders/receive">進行中收款訂單</a></div></div>
+  <div class="card stat"><div class="n">{{ open_receive }}</div><div class="l"><a href="{{ admin }}/orders/receive">進行中收款訂單</a></div></div>
   <div class="card stat"><div class="n {{ 'bad-text' if failed_cb }}">{{ failed_cb }}</div><div class="l">回調失敗</div></div>
 </div>
 <h2>今日</h2>

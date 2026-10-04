@@ -5,7 +5,7 @@
 <h1>會員列表</h1>
 <details class="card">
   <summary><b>建立會員</b></summary>
-  <form method="post" action="/admin/members" class="form-grid" style="margin-top:12px">
+  <form method="post" action="{{ admin }}/members" class="form-grid" style="margin-top:12px">
     {{ csrf_field(csrf) }}
     <label>商戶<select name="merchant_id" required>{% for mc in merchants %}<option value="{{ mc.id }}">{{ mc.name }}</option>{% endfor %}</select></label>
     <label>姓名（實名）<input name="name" required maxlength="15"></label>
@@ -28,7 +28,7 @@
 <tr><th>ID</th><th>姓名</th><th>商戶</th><th>電話</th><th>身分證</th><th>銀行帳戶</th><th>車隊</th><th>狀態</th><th>建立時間</th></tr>
 {% for mb in rows %}
 <tr>
-  <td>{{ mb.id }}</td><td><a href="/admin/members/{{ mb.id }}">{{ mb.name }}</a></td><td>{{ mb.merchant.name }}</td>
+  <td>{{ mb.id }}</td><td><a href="{{ admin }}/members/{{ mb.id }}">{{ mb.name }}</a></td><td>{{ mb.merchant.name }}</td>
   <td>{{ mb.phone }}</td><td>{{ mask(mb.pid) }}</td>
   <td>{{ mb.bank_accounts|length }} 個</td><td>{{ mb.team.name if mb.team else '' }}</td>
   <td>{% if mb.status == 'active' %}<span class="tag s3">正常</span>{% else %}<span class="tag bad">停用</span>{% endif %}</td>

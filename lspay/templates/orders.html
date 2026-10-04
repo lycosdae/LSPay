@@ -25,10 +25,10 @@
 </tr>
 {% for o in rows %}
 <tr>
-  <td><a href="/admin/order/{{ o.order_sid }}">{{ o.order_sid }}</a></td>
+  <td><a href="{{ admin }}/order/{{ o.order_sid }}">{{ o.order_sid }}</a></td>
   <td>{{ o.order_id }}</td>
   <td>{{ o.merchant.name }}</td>
-  <td>{% if o.member_id %}<a href="/admin/members/{{ o.member_id }}">{{ o.payer }}</a>{% else %}{{ o.payer }}{% endif %}</td>
+  <td>{% if o.member_id %}<a href="{{ admin }}/members/{{ o.member_id }}">{{ o.payer }}</a>{% else %}{{ o.payer }}{% endif %}</td>
   <td class="num">{{ o.amount }}</td>
   <td class="num">{{ o.fee }}</td>
   {% if view == 'receive' %}<td>{{ o.bank_name }} {{ o.bank_no[-5:] if o.bank_no }}</td>
@@ -41,10 +41,10 @@
   {% if view == 'pending' %}
   <td>
     {% if o.review_status == 'pending' %}
-      <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/approve">{{ csrf_field(csrf) }}<button class="ok">通過</button></form>
-      <a href="/admin/order/{{ o.order_sid }}">駁回…</a>
+      <form class="inline" method="post" action="{{ admin }}/order/{{ o.order_sid }}/approve">{{ csrf_field(csrf) }}<button class="ok">通過</button></form>
+      <a href="{{ admin }}/order/{{ o.order_sid }}">駁回…</a>
     {% elif o.review_status == 'approved' %}
-      <form class="inline" method="post" action="/admin/order/{{ o.order_sid }}/paid" onsubmit="return confirm('確認已從公司帳戶轉出 {{ o.amount }} 給 {{ o.bank_title }}？')">{{ csrf_field(csrf) }}<button>已出款</button></form>
+      <form class="inline" method="post" action="{{ admin }}/order/{{ o.order_sid }}/paid" onsubmit="return confirm('確認已從公司帳戶轉出 {{ o.amount }} 給 {{ o.bank_title }}？')">{{ csrf_field(csrf) }}<button>已出款</button></form>
     {% endif %}
   </td>
   {% endif %}

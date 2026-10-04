@@ -5,6 +5,7 @@ import secrets
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from .. import callbacks, services, telegram
 from .. import models as m
+from ..config import settings
 from ..db import get_db
 from ..timeutil import fmt, now_tw, parse
 from .auth import (
@@ -37,7 +39,11 @@ templates.env.globals.update(
     ROLE_LABELS=m.ROLE_LABELS,
 )
 
-router = APIRouter()
+ADMIN = settings.admin_path
+templates.env.globals["admin"] = ADMIN
+
+router = APIRouter(prefix=ADMIN)
+public_router = APIRouter()
 PAGE = 50
 
 
@@ -47,9 +53,10 @@ def render(request: Request, name: str, user: Optional[m.AdminUser] = None, **ct
 
 
 def redirect(url: str, flash: Optional[str] = None, request: Optional[Request] = None) -> RedirectResponse:
+    """Redirect to a path inside the admin web (``url`` is relative to ADMIN_PATH)."""
     if flash and request is not None:
         request.session["flash"] = flash
-    return RedirectResponse(url, status_code=303)
+    return RedirectResponse(ADMIN + url, status_code=303)
 
 
 def actor(user: m.AdminUser) -> services.Actor:
@@ -68,12 +75,12 @@ def to_decimal(text: str, field: str) -> Decimal:
 # --------------------------------------------------------------------------
 
 
-@router.get("/admin/login", response_class=HTMLResponse)
+@router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return render(request, "login.html")
 
 
-@router.post("/admin/login")
+@router.post("/login")
 def login(
     request: Request,
     username: str = Form(...),
@@ -83,23 +90,23 @@ def login(
 ):
     key = f"{username}|{request.client.host if request.client else ''}"
     if login_blocked(key):
-        return redirect("/admin/login", "登入失敗次數過多，請 10 分鐘後再試", request)
+        return redirect("/login", "登入失敗次數過多，請 10 分鐘後再試", request)
     user = db.scalar(select(m.AdminUser).where(m.AdminUser.username == username))
     if user is None or not user.enabled or not verify_password(password, user.password_hash):
         record_failure(key)
-        return redirect("/admin/login", "帳號或密碼錯誤", request)
+        return redirect("/login", "帳號或密碼錯誤", request)
     clear_failures(key)
     request.session.clear()
     request.session["uid"] = user.id
     user.last_login_at = now_tw()
     db.commit()
-    return redirect("/admin")
+    return redirect("")
 
 
-@router.post("/admin/logout")
+@router.post("/logout")
 def logout(request: Request, _=Depends(check_csrf)):
     request.session.clear()
-    return redirect("/admin/login")
+    return redirect("/login")
 
 
 # --------------------------------------------------------------------------
@@ -107,7 +114,7 @@ def logout(request: Request, _=Depends(check_csrf)):
 # --------------------------------------------------------------------------
 
 
-@router.get("/admin", response_class=HTMLResponse)
+@router.get("", response_class=HTMLResponse)
 def dashboard(request: Request, user=Depends(current_user), db: Session = Depends(get_db)):
     today = now_tw().replace(hour=0, minute=0, second=0)
 
@@ -172,7 +179,7 @@ ORDER_VIEWS = {
 }
 
 
-@router.get("/admin/orders/{view}", response_class=HTMLResponse)
+@router.get("/orders/{view}", response_class=HTMLResponse)
 def order_list(
     request: Request,
     view: str,
@@ -253,7 +260,7 @@ def get_order(db: Session, sid: str) -> m.Order:
     return order
 
 
-@router.get("/admin/order/{sid}", response_class=HTMLResponse)
+@router.get("/order/{sid}", response_class=HTMLResponse)
 def order_detail(request: Request, sid: str, user=Depends(current_user), db: Session = Depends(get_db)):
     order = get_order(db, sid)
     warnings = services.withdraw_warnings(order) if order.type == m.TYPE_WITHDRAW else []
@@ -268,7 +275,7 @@ def order_detail(request: Request, sid: str, user=Depends(current_user), db: Ses
     )
 
 
-@router.post("/admin/order/{sid}/confirm")
+@router.post("/order/{sid}/confirm")
 def order_confirm(
     request: Request,
     tasks: BackgroundTasks,
@@ -289,19 +296,19 @@ def order_confirm(
         )
     except services.ActionError as exc:
         db.rollback()
-        return redirect(f"/admin/order/{sid}", f"❌ {exc}", request)
+        return redirect(f"/order/{sid}", f"❌ {exc}", request)
     if not result.ok and not force:
         db.rollback()
-        return redirect(f"/admin/order/{sid}", "❌ 資料不符，未入帳：" + "；".join(result.problems), request)
+        return redirect(f"/order/{sid}", "❌ 資料不符，未入帳：" + "；".join(result.problems), request)
     db.commit()
     tasks.add_task(telegram.notify_safe, order.id)
     msg = "✅ 已入帳"
     if not result.name_ok:
         msg += "（注意：銀行戶名與會員姓名不同）"
-    return redirect(f"/admin/order/{sid}", msg, request)
+    return redirect(f"/order/{sid}", msg, request)
 
 
-@router.post("/admin/order/{sid}/{action}")
+@router.post("/order/{sid}/{action}")
 def order_action(
     request: Request,
     tasks: BackgroundTasks,
@@ -335,13 +342,14 @@ def order_action(
             raise HTTPException(404)
     except (services.ActionError, ValueError) as exc:
         db.rollback()
-        return redirect(f"/admin/order/{sid}", f"❌ {exc}", request)
+        return redirect(f"/order/{sid}", f"❌ {exc}", request)
     db.commit()
     tasks.add_task(telegram.notify_safe, order.id)
-    back = request.headers.get("referer") or f"/admin/order/{sid}"
-    if "/admin/" not in back:
-        back = f"/admin/order/{sid}"
-    return redirect(back, "✅ 已處理", request)
+    back = urlparse(request.headers.get("referer") or "")
+    target = f"/order/{sid}"
+    if back.path.startswith(ADMIN + "/"):
+        target = back.path[len(ADMIN) :] + (f"?{back.query}" if back.query else "")
+    return redirect(target, "✅ 已處理", request)
 
 
 # --------------------------------------------------------------------------
@@ -349,7 +357,7 @@ def order_action(
 # --------------------------------------------------------------------------
 
 
-@router.get("/admin/members", response_class=HTMLResponse)
+@router.get("/members", response_class=HTMLResponse)
 def member_list(
     request: Request,
     q: str = "",
@@ -391,7 +399,7 @@ def member_list(
     )
 
 
-@router.post("/admin/members")
+@router.post("/members")
 def member_create(
     request: Request,
     merchant_id: int = Form(...),
@@ -411,7 +419,7 @@ def member_create(
         raise HTTPException(400, "商戶不存在")
     pid = pid.strip().upper()
     if db.scalar(select(m.Member.id).where(m.Member.merchant_id == merchant_id, m.Member.pid == pid)):
-        return redirect("/admin/members", "❌ 此商戶已有相同身分證號的會員", request)
+        return redirect("/members", "❌ 此商戶已有相同身分證號的會員", request)
     member = m.Member(
         merchant_id=merchant_id,
         name=name.strip(),
@@ -426,10 +434,10 @@ def member_create(
         services.add_member_account(db, member, bank_code, bank_no, name.strip())
     db.add(m.AuditLog(actor=user.label, action="member_create", detail=f"{member.id} {member.name}"))
     db.commit()
-    return redirect(f"/admin/members/{member.id}", "✅ 會員已建立", request)
+    return redirect(f"/members/{member.id}", "✅ 會員已建立", request)
 
 
-@router.get("/admin/members/{mid}", response_class=HTMLResponse)
+@router.get("/members/{mid}", response_class=HTMLResponse)
 def member_detail(request: Request, mid: int, user=Depends(current_user), db: Session = Depends(get_db)):
     member = db.get(m.Member, mid)
     if member is None:
@@ -445,7 +453,7 @@ def member_detail(request: Request, mid: int, user=Depends(current_user), db: Se
     )
 
 
-@router.post("/admin/members/{mid}")
+@router.post("/members/{mid}")
 def member_update(
     request: Request,
     mid: int,
@@ -468,10 +476,10 @@ def member_update(
     member.note = note
     db.add(m.AuditLog(actor=user.label, action="member_update", detail=f"{member.id} status={member.status}"))
     db.commit()
-    return redirect(f"/admin/members/{mid}", "✅ 已儲存", request)
+    return redirect(f"/members/{mid}", "✅ 已儲存", request)
 
 
-@router.post("/admin/members/{mid}/accounts")
+@router.post("/members/{mid}/accounts")
 def member_add_account(
     request: Request,
     mid: int,
@@ -486,14 +494,14 @@ def member_add_account(
     if member is None:
         raise HTTPException(404)
     if len(services.norm_bank_code(bank_code)) != 3:
-        return redirect(f"/admin/members/{mid}", "❌ 銀行代碼需為 3 碼", request)
+        return redirect(f"/members/{mid}", "❌ 銀行代碼需為 3 碼", request)
     added = services.add_member_account(db, member, bank_code, bank_no, account_name.strip())
     db.add(m.AuditLog(actor=user.label, action="member_account_add", detail=f"{mid} {bank_code}-{bank_no[-5:]}"))
     db.commit()
-    return redirect(f"/admin/members/{mid}", "✅ 已新增帳戶" if added else "帳戶已存在", request)
+    return redirect(f"/members/{mid}", "✅ 已新增帳戶" if added else "帳戶已存在", request)
 
 
-@router.post("/admin/members/{mid}/accounts/{aid}/delete")
+@router.post("/members/{mid}/accounts/{aid}/delete")
 def member_del_account(
     request: Request,
     mid: int,
@@ -510,7 +518,7 @@ def member_del_account(
         m.AuditLog(actor=user.label, action="member_account_delete", detail=f"{mid} {acc.bank_code}-{acc.bank_no[-5:]}")
     )
     db.commit()
-    return redirect(f"/admin/members/{mid}", "✅ 已刪除帳戶", request)
+    return redirect(f"/members/{mid}", "✅ 已刪除帳戶", request)
 
 
 # --------------------------------------------------------------------------
@@ -518,14 +526,14 @@ def member_del_account(
 # --------------------------------------------------------------------------
 
 
-@router.get("/admin/teams", response_class=HTMLResponse)
+@router.get("/teams", response_class=HTMLResponse)
 def team_list(request: Request, user=Depends(current_user), db: Session = Depends(get_db)):
     teams = db.scalars(select(m.Team).options(selectinload(m.Team.users)).order_by(m.Team.id)).all()
     member_counts = dict(db.execute(select(m.Member.team_id, func.count()).group_by(m.Member.team_id)).all())
     return render(request, "teams.html", user, teams=teams, member_counts=member_counts)
 
 
-@router.post("/admin/teams")
+@router.post("/teams")
 def team_save(
     request: Request,
     team_id: str = Form(""),
@@ -549,11 +557,11 @@ def team_save(
         db.commit()
     except Exception:
         db.rollback()
-        return redirect("/admin/teams", "❌ 車隊名稱重複", request)
-    return redirect("/admin/teams", "✅ 已儲存", request)
+        return redirect("/teams", "❌ 車隊名稱重複", request)
+    return redirect("/teams", "✅ 已儲存", request)
 
 
-@router.get("/admin/team-orders", response_class=HTMLResponse)
+@router.get("/team-orders", response_class=HTMLResponse)
 def team_orders(
     request: Request,
     date_from: str = "",
@@ -603,7 +611,7 @@ def team_orders(
 # --------------------------------------------------------------------------
 
 
-@router.get("/admin/users", response_class=HTMLResponse)
+@router.get("/users", response_class=HTMLResponse)
 def user_list(request: Request, user=Depends(current_user), db: Session = Depends(get_db)):
     users = db.scalars(select(m.AdminUser).options(selectinload(m.AdminUser.team)).order_by(m.AdminUser.id)).all()
     teams = db.scalars(select(m.Team).order_by(m.Team.id)).all()
@@ -613,7 +621,7 @@ def user_list(request: Request, user=Depends(current_user), db: Session = Depend
     return render(request, "users.html", user, users=users, teams=teams, logs=logs)
 
 
-@router.post("/admin/users")
+@router.post("/users")
 def user_save(
     request: Request,
     user_id: str = Form(""),
@@ -635,18 +643,18 @@ def user_save(
         if target is None:
             raise HTTPException(404)
         if target.id == user.id and (role != m.ROLE_ADMIN or not enabled):
-            return redirect("/admin/users", "❌ 不能停用自己或移除自己的管理員權限", request)
+            return redirect("/users", "❌ 不能停用自己或移除自己的管理員權限", request)
     else:
         username = username.strip()
         if not username or len(password) < 8:
-            return redirect("/admin/users", "❌ 需填帳號，密碼至少 8 碼", request)
+            return redirect("/users", "❌ 需填帳號，密碼至少 8 碼", request)
         if db.scalar(select(m.AdminUser.id).where(m.AdminUser.username == username)):
-            return redirect("/admin/users", "❌ 帳號已存在", request)
+            return redirect("/users", "❌ 帳號已存在", request)
         target = m.AdminUser(username=username, password_hash="")
         db.add(target)
     if password:
         if len(password) < 8:
-            return redirect("/admin/users", "❌ 密碼至少 8 碼", request)
+            return redirect("/users", "❌ 密碼至少 8 碼", request)
         target.password_hash = hash_password(password)
     target.display_name = display_name.strip()
     target.role = role
@@ -655,10 +663,10 @@ def user_save(
     target.enabled = bool(enabled) or not user_id
     db.add(m.AuditLog(actor=user.label, action="user_save", detail=f"{target.username} role={role}"))
     db.commit()
-    return redirect("/admin/users", "✅ 已儲存", request)
+    return redirect("/users", "✅ 已儲存", request)
 
 
-@router.post("/admin/profile/password")
+@router.post("/profile/password")
 def change_password(
     request: Request,
     old_password: str = Form(...),
@@ -668,12 +676,12 @@ def change_password(
     _=Depends(check_csrf),
 ):
     if not verify_password(old_password, user.password_hash):
-        return redirect("/admin/users", "❌ 舊密碼錯誤", request)
+        return redirect("/users", "❌ 舊密碼錯誤", request)
     if len(new_password) < 8:
-        return redirect("/admin/users", "❌ 新密碼至少 8 碼", request)
+        return redirect("/users", "❌ 新密碼至少 8 碼", request)
     user.password_hash = hash_password(new_password)
     db.commit()
-    return redirect("/admin/users", "✅ 密碼已更新", request)
+    return redirect("/users", "✅ 密碼已更新", request)
 
 
 # --------------------------------------------------------------------------
@@ -681,7 +689,7 @@ def change_password(
 # --------------------------------------------------------------------------
 
 
-@router.get("/admin/merchants", response_class=HTMLResponse)
+@router.get("/merchants", response_class=HTMLResponse)
 def merchant_list(request: Request, user=Depends(require_admin), db: Session = Depends(get_db)):
     merchants = db.scalars(select(m.Merchant).order_by(m.Merchant.id)).all()
     return render(request, "merchants.html", user, merchants=merchants, reveal=request.session.pop("reveal", None))
@@ -695,7 +703,7 @@ def _new_client_sid(db: Session) -> str:
     return sid
 
 
-@router.post("/admin/merchants")
+@router.post("/merchants")
 def merchant_save(
     request: Request,
     merchant_id: str = Form(""),
@@ -733,11 +741,11 @@ def merchant_save(
     db.commit()
     if created:
         request.session["reveal"] = merchant.id
-        return redirect("/admin/merchants", "✅ 商戶已建立，請立即複製金鑰", request)
-    return redirect("/admin/merchants", "✅ 已儲存", request)
+        return redirect("/merchants", "✅ 商戶已建立，請立即複製金鑰", request)
+    return redirect("/merchants", "✅ 已儲存", request)
 
 
-@router.post("/admin/merchants/{mid}/keys")
+@router.post("/merchants/{mid}/keys")
 def merchant_keys(
     request: Request,
     mid: int,
@@ -759,10 +767,10 @@ def merchant_keys(
     )
     db.commit()
     request.session["reveal"] = merchant.id
-    return redirect("/admin/merchants", "✅ 已更換金鑰" if rotate else None, request)
+    return redirect("/merchants", "✅ 已更換金鑰" if rotate else None, request)
 
 
-@router.post("/admin/merchants/{mid}/balance")
+@router.post("/merchants/{mid}/balance")
 def merchant_balance(
     request: Request,
     mid: int,
@@ -776,17 +784,17 @@ def merchant_balance(
     if merchant is None:
         raise HTTPException(404)
     if not note.strip():
-        return redirect("/admin/merchants", "❌ 請填寫調整原因", request)
+        return redirect("/merchants", "❌ 請填寫調整原因", request)
     try:
         services.adjust_balance(db, merchant, to_decimal(delta, "金額"), user.label, note.strip())
     except services.ActionError as exc:
         db.rollback()
-        return redirect("/admin/merchants", f"❌ {exc}", request)
+        return redirect("/merchants", f"❌ {exc}", request)
     db.commit()
-    return redirect("/admin/merchants", "✅ 餘額已調整", request)
+    return redirect("/merchants", "✅ 餘額已調整", request)
 
 
-@router.get("/admin/accounts", response_class=HTMLResponse)
+@router.get("/accounts", response_class=HTMLResponse)
 def account_list(request: Request, user=Depends(require_admin), db: Session = Depends(get_db)):
     accounts = db.scalars(select(m.ReceivingAccount).order_by(m.ReceivingAccount.id)).all()
     today = now_tw().replace(hour=0, minute=0, second=0)
@@ -800,7 +808,7 @@ def account_list(request: Request, user=Depends(require_admin), db: Session = De
     return render(request, "accounts.html", user, accounts=accounts, used=used)
 
 
-@router.post("/admin/accounts")
+@router.post("/accounts")
 def account_save(
     request: Request,
     account_id: str = Form(""),
@@ -834,7 +842,7 @@ def account_save(
     db.add(acc)
     db.add(m.AuditLog(actor=user.label, action="account_save", detail=f"{acc.bank_code}-{acc.bank_no[-5:]}"))
     db.commit()
-    return redirect("/admin/accounts", "✅ 已儲存", request)
+    return redirect("/accounts", "✅ 已儲存", request)
 
 
 # --------------------------------------------------------------------------
@@ -842,7 +850,7 @@ def account_save(
 # --------------------------------------------------------------------------
 
 
-@router.get("/cashier/{sid}", response_class=HTMLResponse)
+@public_router.get("/cashier/{sid}", response_class=HTMLResponse)
 def cashier(request: Request, sid: str, t: str = "", db: Session = Depends(get_db)):
     order = db.scalar(select(m.Order).where(m.Order.order_sid == sid, m.Order.type == m.TYPE_RECEIVE))
     if order is None or not t or not secrets.compare_digest(t, order.cashier_token):

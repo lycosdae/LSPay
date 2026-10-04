@@ -19,12 +19,12 @@
   <td class="num">{{ used.get(a.id, 0) }}</td>
   <td><input form="{{ fid }}" name="note" value="{{ a.note }}" size="8"></td>
   <td><input form="{{ fid }}" type="checkbox" name="enabled" value="1" {{ 'checked' if a.enabled }}></td>
-  <td><form id="{{ fid }}" method="post" action="/admin/accounts">{{ csrf_field(csrf) }}<input type="hidden" name="account_id" value="{{ a.id }}"><button type="submit">儲存</button></form></td>
+  <td><form id="{{ fid }}" method="post" action="{{ admin }}/accounts">{{ csrf_field(csrf) }}<input type="hidden" name="account_id" value="{{ a.id }}"><button type="submit">儲存</button></form></td>
 </tr>
 {% else %}<tr><td colspan="11" class="muted">尚無收款帳戶，收款訂單將無法配對</td></tr>{% endfor %}
 </table></div>
 <h2>新增收款帳戶</h2>
-<form method="post" action="/admin/accounts" class="filters">
+<form method="post" action="{{ admin }}/accounts" class="filters">
   {{ csrf_field(csrf) }}
   <select name="kind"><option value="company">公司帳戶</option><option value="virtual">虛擬帳號</option></select>
   <input name="bank_code" placeholder="銀行代碼" size="4" required>

@@ -16,6 +16,9 @@ class Settings:
     database_url: str = field(default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///./lspay.db"))
     # Public base URL, used to build cashier (fronttable_url) links.
     base_url: str = field(default_factory=lambda: os.getenv("BASE_URL", "http://localhost:8000").rstrip("/"))
+    # Secret URL prefix for the admin web, e.g. "/console-8f3k2x9q". Only people
+    # who know it can reach the login page; every other path returns 404.
+    admin_path: str = field(default_factory=lambda: "/" + os.getenv("ADMIN_PATH", "admin").strip().strip("/"))
     session_secret: str = field(default_factory=lambda: os.getenv("SESSION_SECRET", ""))
     cookie_secure: bool = field(default_factory=lambda: _bool("COOKIE_SECURE", False))
 
