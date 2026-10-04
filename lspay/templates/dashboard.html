@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}儀表板{% endblock %}
+{% block content %}
+<h1>儀表板</h1>
+<div class="grid">
+  <div class="card stat"><div class="n">{{ pending }}</div><div class="l"><a href="{{ admin }}/orders/pending">待審核付款訂單</a></div></div>
+  <div class="card stat"><div class="n">{{ to_pay }}</div><div class="l">已審核待出款</div></div>
+  <div class="card stat"><div class="n">{{ open_receive }}</div><div class="l"><a href="{{ admin }}/orders/receive">進行中收款訂單</a></div></div>
+  <div class="card stat"><div class="n {{ 'bad-text' if failed_cb }}">{{ failed_cb }}</div><div class="l">回調失敗</div></div>
+</div>
+<h2>今日</h2>
+<div class="grid">
+  <div class="card stat"><div class="n">{{ receive.done }} / {{ receive.count }}</div><div class="l">收款完成 / 建立</div></div>
+  <div class="card stat"><div class="n">{{ receive.done_amount }}</div><div class="l">收款完成金額</div></div>
+  <div class="card stat"><div class="n">{{ withdraw.done }} / {{ withdraw.count }}</div><div class="l">付款完成 / 建立</div></div>
+  <div class="card stat"><div class="n">{{ withdraw.done_amount }}</div><div class="l">付款完成金額</div></div>
+</div>
+<h2>商戶餘額</h2>
+<div class="tablewrap"><table>
+<tr><th>Client SID</th><th>商戶</th><th class="num">可用餘額</th><th class="num">凍結金額</th><th>狀態</th></tr>
+{% for mc in merchants %}
+<tr><td>{{ mc.client_sid }}</td><td>{{ mc.name }}</td><td class="num">{{ mc.balance }}</td><td class="num">{{ mc.balance_frozen }}</td><td>{{ '啟用' if mc.enabled else '停用' }}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">尚無商戶</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

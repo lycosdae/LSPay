@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>付款資訊 · LSPay</title><link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<div class="login card" style="max-width:420px">
+  <h1>轉帳付款資訊</h1>
+  {% if o.status in (m.ST_NEW, m.ST_MATCHED, m.ST_ACCEPTED) %}
+    {% if o.receiving_account_id %}
+    <dl class="kv">
+      <dt>訂單編號</dt><dd>{{ o.order_id }}</dd>
+      <dt>轉帳金額</dt><dd><b style="font-size:20px">{{ o.amount }}</b></dd>
+      <dt>銀行</dt><dd>{{ o.bank_code }} {{ o.bank_name }} {{ o.bank_branch }}</dd>
+      <dt>戶名</dt><dd>{{ o.bank_title }}</dd>
+      <dt>帳號</dt><dd><code style="font-size:18px">{{ o.bank_no }}</code></dd>
+      <dt>付款期限</dt><dd>{{ fmt(o.end_time) }}</dd>
+    </dl>
+    <p class="warn">請使用您登記的本人帳戶轉帳，並轉入「完全相同」的金額。使用其他帳戶或金額不符將無法入帳。</p>
+    {% else %}
+    <p>目前沒有可用的收款帳戶，請稍後再試或聯絡客服。</p>
+    {% endif %}
+  {% elif o.status == m.ST_DONE %}
+    <p>✅ 此訂單已完成入帳。</p>
+  {% else %}
+    <p>此訂單已失效（{{ o.status_label }}），請重新建立訂單。</p>
+  {% endif %}
+</div>
+</body>
+</html>
