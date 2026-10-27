@@ -259,7 +259,7 @@ FAILED_STATUSES = {st for st in m.STATUS_LABELS if st >= 90}
 
 def check_receive_allowed(db: Session, merchant: m.Merchant, amount: Decimal, payer: str, zh: bool = False) -> None:
     """Merchant settings that can refuse a new deposit. ``zh`` picks the member-page wording."""
-    if not merchant.can_receive:
+    if not (merchant.can_receive and merchant.receive_open):
         raise ApiError("此商戶目前暫停儲值" if zh else "Receive Disabled.")
     if (merchant.receive_min and amount < merchant.receive_min) or (
         merchant.receive_max and amount > merchant.receive_max
@@ -298,7 +298,7 @@ def check_receive_allowed(db: Session, merchant: m.Merchant, amount: Decimal, pa
 
 
 def check_withdraw_allowed(merchant: m.Merchant, amount: Decimal) -> None:
-    if not merchant.can_withdraw:
+    if not (merchant.can_withdraw and merchant.withdraw_open):
         raise ApiError("Withdraw Disabled.")
     if (merchant.withdraw_min and amount < merchant.withdraw_min) or (
         merchant.withdraw_max and amount > merchant.withdraw_max
@@ -721,3 +721,126 @@ def add_proof(db: Session, order: m.Order, data: bytes) -> m.OrderAttachment:
     db.add(att)
     _event(db, order, "member", order.payer, "proof_upload", None, None, f"轉帳截圖 {len(data) // 1024}KB")
     return att
+
+
+# --------------------------------------------------------------------------
+# Merchant self-service (Telegram bot / merchant backend)
+# --------------------------------------------------------------------------
+
+PERIODS = {
+    "today": "今日",
+    "yesterday": "昨日",
+    "week": "本週",
+    "last_week": "上週",
+    "month": "本月",
+    "last_month": "上個月",
+}
+
+
+def period_range(key: str, now=None) -> tuple:
+    """[start, end) of a named period in GMT+8. Weeks start on Monday."""
+    today = (now or now_tw()).replace(hour=0, minute=0, second=0, microsecond=0)
+    week = today - timedelta(days=today.weekday())
+    month = today.replace(day=1)
+    ranges = {
+        "today": (today, today + timedelta(days=1)),
+        "yesterday": (today - timedelta(days=1), today),
+        "week": (week, week + timedelta(days=7)),
+        "last_week": (week - timedelta(days=7), week),
+        "month": (month, (month + timedelta(days=32)).replace(day=1)),
+        "last_month": ((month - timedelta(days=1)).replace(day=1), month),
+    }
+    return ranges[key]
+
+
+def merchant_totals(db: Session, merchant_id: int, start, end) -> dict:
+    """Completed orders finished in [start, end): {type: (count, amount, fee)}."""
+    rows = db.execute(
+        select(
+            m.Order.type,
+            func.count(),
+            func.coalesce(func.sum(m.Order.amount), 0),
+            func.coalesce(func.sum(m.Order.fee), 0),
+        )
+        .where(
+            m.Order.merchant_id == merchant_id,
+            m.Order.status == m.ST_DONE,
+            m.Order.finish_time >= start,
+            m.Order.finish_time < end,
+        )
+        .group_by(m.Order.type)
+    ).all()
+    out = {m.TYPE_RECEIVE: (0, Decimal(0), Decimal(0)), m.TYPE_WITHDRAW: (0, Decimal(0), Decimal(0))}
+    for otype, count, amount, fee in rows:
+        out[otype] = (count, Decimal(amount), Decimal(fee))
+    return out
+
+
+def _unique_code(db: Session, column, length: int = 8) -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    while True:
+        code = "".join(secrets.choice(alphabet) for _ in range(length))
+        if db.scalar(select(func.count()).where(column == code)) == 0:
+            return code
+
+
+def ensure_invite_code(db: Session, merchant: m.Merchant) -> str:
+    if not merchant.invite_code:
+        merchant.invite_code = _unique_code(db, m.Merchant.invite_code, 6)
+    return merchant.invite_code
+
+
+def merchant_by_invite(db: Session, code: str) -> Optional[m.Merchant]:
+    code = (code or "").strip().upper()
+    return db.scalar(select(m.Merchant).where(m.Merchant.invite_code == code)) if code else None
+
+
+BIND_MINUTES = 30
+
+
+def new_bind_code(db: Session, merchant: m.Merchant) -> str:
+    merchant.tg_bind_code = _unique_code(db, m.Merchant.tg_bind_code)
+    merchant.tg_bind_expires = int(now_tw().timestamp()) + BIND_MINUTES * 60
+    return merchant.tg_bind_code
+
+
+def bind_telegram(db: Session, code: str, tg_user_id, tg_name: str) -> Optional[m.Merchant]:
+    """Link a Telegram account with a one-time bind code. Returns the merchant, or None."""
+    code = (code or "").strip().upper()
+    if not code:
+        return None
+    merchant = db.scalar(select(m.Merchant).where(m.Merchant.tg_bind_code == code))
+    if merchant is None or not merchant.enabled or merchant.tg_bind_expires < int(now_tw().timestamp()):
+        return None
+    merchant.tg_bind_code = ""
+    merchant.tg_bind_expires = 0
+    link = db.scalar(select(m.MerchantTgUser).where(m.MerchantTgUser.tg_user_id == str(tg_user_id)))
+    if link is None:
+        link = m.MerchantTgUser(tg_user_id=str(tg_user_id))
+        db.add(link)
+    link.merchant_id = merchant.id
+    link.tg_name = (tg_name or "")[:64]
+    link.state, link.state_data = "", ""
+    db.add(
+        m.AuditLog(actor=f"商戶 {merchant.login_name or merchant.client_sid}", action="tg_bind", detail=link.tg_name)
+    )
+    return merchant
+
+
+def set_settle_account(db: Session, merchant: m.Merchant, code: str, no: str, title: str, actor: str) -> None:
+    code, no, title = re.sub(r"\D", "", code or ""), re.sub(r"\D", "", no or ""), (title or "").strip()
+    if len(code) != 3:
+        raise ActionError("銀行代碼需為 3 碼數字")
+    if not 6 <= len(no) <= 20:
+        raise ActionError("帳號需為 6～20 碼數字")
+    if not title or len(title) > 64:
+        raise ActionError("請填寫戶名")
+    old = f"{merchant.settle_bank_code}-{merchant.settle_bank_no} {merchant.settle_bank_title}".strip(" -")
+    merchant.settle_bank_code, merchant.settle_bank_no, merchant.settle_bank_title = code, no, title
+    db.add(
+        m.AuditLog(
+            actor=actor,
+            action="settle_account",
+            detail=f"{merchant.client_sid} {old or '（無）'} → {code}-{no} {title}",
+        )
+    )

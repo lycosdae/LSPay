@@ -43,6 +43,8 @@ class Settings:
     telegram_chat_id: str = field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID", ""))
     # Value Telegram sends in X-Telegram-Bot-Api-Secret-Token on webhook calls.
     telegram_webhook_secret: str = field(default_factory=lambda: os.getenv("TELEGRAM_WEBHOOK_SECRET", ""))
+    # Shown by the merchant bot's 與客服人員聯絡 button, e.g. "@lspay_support".
+    support_contact: str = field(default_factory=lambda: os.getenv("SUPPORT_CONTACT", ""))
 
     @property
     def env_label(self) -> str:

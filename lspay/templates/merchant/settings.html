@@ -1,0 +1,61 @@
+{% extends "merchant/base.html" %}
+{% block title %}Telegram 與帳戶設定{% endblock %}
+{% block content %}
+<h1>Telegram 與帳戶設定</h1>
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+
+<div class="card form-card">
+  <h2 style="margin-top:0">收款／代付開關</h2>
+  <form method="post" action="{{ mp }}/settings/switches" class="form-grid">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="s-recv">收款</label>
+    <div>{% if mc.can_receive %}<select id="s-recv" name="receive_open"><option value="1" {{ 'selected' if mc.receive_open }}>開啟</option><option value="0" {{ 'selected' if not mc.receive_open }}>關閉</option></select>
+      {% else %}<input type="hidden" name="receive_open" value="{{ '1' if mc.receive_open else '0' }}"><span class="muted">⛔ 管理員已停用</span>{% endif %}</div>
+    <label for="s-pay">代付</label>
+    <div>{% if mc.can_withdraw %}<select id="s-pay" name="withdraw_open"><option value="1" {{ 'selected' if mc.withdraw_open }}>開啟</option><option value="0" {{ 'selected' if not mc.withdraw_open }}>關閉</option></select>
+      {% else %}<input type="hidden" name="withdraw_open" value="{{ '1' if mc.withdraw_open else '0' }}"><span class="muted">⛔ 管理員已停用</span>{% endif %}</div>
+    <span></span><p class="muted hint">關閉後新的訂單會被拒絕，進行中的訂單不受影響。Telegram 機器人的開關和這裡同步。</p>
+    <span></span><div class="actions"><button type="submit">儲存</button></div>
+  </form>
+</div>
+
+<div class="card form-card">
+  <h2 style="margin-top:0">結算帳戶</h2>
+  <form method="post" action="{{ mp }}/settings/settle" class="form-grid" onsubmit="return confirm('確認修改結算帳戶？')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="b-code">銀行代碼</label>
+    <input id="b-code" name="bank_code" value="{{ mc.settle_bank_code }}" required maxlength="3" inputmode="numeric" placeholder="例如 822">
+    <label for="b-no">帳號</label>
+    <input id="b-no" name="bank_no" value="{{ mc.settle_bank_no }}" required maxlength="20" inputmode="numeric">
+    <label for="b-title">戶名</label>
+    <input id="b-title" name="bank_title" value="{{ mc.settle_bank_title }}" required maxlength="64">
+    <span></span><p class="muted hint">商戶餘額提領到這個帳戶。修改後會通知客服，Telegram 機器人裡看到的也是這組資料。</p>
+    <span></span><div class="actions"><button type="submit">儲存</button></div>
+  </form>
+</div>
+
+<div class="card form-card">
+  <h2 style="margin-top:0">Telegram 機器人</h2>
+  <p>綁定後可以在 Telegram 查可用額度、各期間小計、查訂單，並開關收款和代付。</p>
+  {% if bind_code %}
+  <p>綁定碼：<code style="font-size:20px">{{ bind_code }}</code>　<span class="muted">{{ bind_minutes }} 分鐘內有效，只能用一次</span></p>
+  <p class="muted">私訊機器人，把這組綁定碼傳給它就完成綁定。</p>
+  {% endif %}
+  <form method="post" action="{{ mp }}/settings/bind-code" style="margin-bottom:12px">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">產生綁定碼</button>
+  </form>
+  <table>
+    <tr><th>已綁定的 Telegram</th><th>綁定時間</th><th></th></tr>
+    {% for link in links %}
+    <tr><td>{{ link.tg_name or link.tg_user_id }}</td><td>{{ fmt(link.created_at) }}</td>
+      <td><form class="inline" method="post" action="{{ mp }}/settings/unbind/{{ link.id }}" onsubmit="return confirm('確定解除？')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="sec" type="submit">解除綁定</button></form></td></tr>
+    {% else %}<tr><td colspan="3" class="muted">尚未綁定</td></tr>{% endfor %}
+  </table>
+</div>
+
+<div class="card form-card">
+  <h2 style="margin-top:0">推廣邀請碼</h2>
+  <p>邀請碼：<code style="font-size:20px">{{ mc.invite_code }}</code></p>
+  <p class="muted">把邀請碼給想開戶的新商戶，開戶時提供邀請碼就會記錄為您推薦。目前已推薦 {{ referred }} 家商戶。</p>
+</div>
+{% endblock %}

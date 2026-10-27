@@ -221,6 +221,11 @@ def handle_update(db: Session, update: dict) -> list[int]:
     if "callback_query" in update:
         return _handle_button(db, update["callback_query"])
     msg = update.get("message") or {}
+    if msg.get("text") and (msg.get("chat") or {}).get("type") == "private":
+        from . import merchant_bot
+
+        merchant_bot.handle(db, msg)
+        return []
     if msg.get("text"):
         return _handle_text(db, msg)
     return []

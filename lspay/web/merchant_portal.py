@@ -259,6 +259,91 @@ def receive_create(
     return page(request, "merchant/created.html", merchant, o=order, cashier=cashier)
 
 
+# --------------------------------------------------------------------------
+# Telegram bot binding, switches, settlement account, invite code
+# --------------------------------------------------------------------------
+
+
+def _settings_page(request: Request, db: Session, merchant: m.Merchant, flash: str = "", bind_code: str = ""):
+    services.ensure_invite_code(db, merchant)
+    db.commit()
+    links = db.scalars(select(m.MerchantTgUser).where(m.MerchantTgUser.merchant_id == merchant.id)).all()
+    referred = db.scalar(select(func.count()).where(m.Merchant.referred_by_id == merchant.id))
+    ctx = {"links": links, "referred": referred, "bind_code": bind_code, "bind_minutes": services.BIND_MINUTES}
+    return page(request, "merchant/settings.html", merchant, flash=flash, **ctx)
+
+
+def _who(merchant: m.Merchant) -> str:
+    return f"商戶 {merchant.login_name}（後台）"
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request, merchant=Depends(current_merchant), db: Session = Depends(get_db)):
+    return _settings_page(request, db, merchant)
+
+
+@router.post("/settings/bind-code", response_class=HTMLResponse)
+def bind_code(
+    request: Request, merchant=Depends(current_merchant), db: Session = Depends(get_db), _=Depends(check_merchant_csrf)
+):
+    code = services.new_bind_code(db, merchant)
+    db.commit()
+    return _settings_page(request, db, merchant, bind_code=code)
+
+
+@router.post("/settings/unbind/{link_id}", response_class=HTMLResponse)
+def unbind(
+    request: Request,
+    link_id: int,
+    merchant=Depends(current_merchant),
+    db: Session = Depends(get_db),
+    _=Depends(check_merchant_csrf),
+):
+    link = db.get(m.MerchantTgUser, link_id)
+    if link is None or link.merchant_id != merchant.id:
+        raise HTTPException(404)
+    db.add(m.AuditLog(actor=_who(merchant), action="tg_unbind", detail=link.tg_name))
+    db.delete(link)
+    db.commit()
+    return _settings_page(request, db, merchant, flash="✅ 已解除綁定")
+
+
+@router.post("/settings/switches", response_class=HTMLResponse)
+def switches(
+    request: Request,
+    receive_open: str = Form("0"),
+    withdraw_open: str = Form("0"),
+    merchant=Depends(current_merchant),
+    db: Session = Depends(get_db),
+    _=Depends(check_merchant_csrf),
+):
+    merchant.receive_open = receive_open == "1"
+    merchant.withdraw_open = withdraw_open == "1"
+    detail = f"收款{'開啟' if merchant.receive_open else '關閉'}，代付{'開啟' if merchant.withdraw_open else '關閉'}"
+    db.add(m.AuditLog(actor=_who(merchant), action="merchant_switch", detail=f"{merchant.client_sid} {detail}"))
+    db.commit()
+    return _settings_page(request, db, merchant, flash=f"✅ 已儲存：{detail}")
+
+
+@router.post("/settings/settle", response_class=HTMLResponse)
+def settle(
+    request: Request,
+    bank_code: str = Form(""),
+    bank_no: str = Form(""),
+    bank_title: str = Form(""),
+    merchant=Depends(current_merchant),
+    db: Session = Depends(get_db),
+    _=Depends(check_merchant_csrf),
+):
+    try:
+        services.set_settle_account(db, merchant, bank_code, bank_no, bank_title, _who(merchant))
+    except services.ActionError as exc:
+        db.rollback()
+        return _settings_page(request, db, merchant, flash=f"❌ {exc}")
+    db.commit()
+    return _settings_page(request, db, merchant, flash="✅ 結算帳戶已更新")
+
+
 ERRORS = {
     "Insufficient balance.": "可動用商餘不足",
     "amount Out Of Range.": "金額超出單筆上下限",

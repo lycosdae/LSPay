@@ -134,6 +134,20 @@ class Merchant(Base):
     # Amount the admin holds back from withdrawals (凍結金額), on top of pending withdrawals.
     balance_hold: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default=text("0"))
     note: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # The merchant's own on/off switches (Telegram bot / merchant backend). An order is
+    # accepted only when the admin allows it (can_*) and the merchant has it open.
+    receive_open: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    withdraw_open: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    # Settlement account: where the platform pays the merchant's balance out to.
+    settle_bank_code: Mapped[str] = mapped_column(String(8), default="", server_default="")
+    settle_bank_no: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    settle_bank_title: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    # Promotion: this merchant's invite code, and the merchant whose code it signed up with (0 = none).
+    invite_code: Mapped[str] = mapped_column(String(16), default="", server_default="", index=True)
+    referred_by_id: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # One-time code for linking a Telegram account to this merchant, valid until tg_bind_expires (unix time).
+    tg_bind_code: Mapped[str] = mapped_column(String(16), default="", server_default="", index=True)
+    tg_bind_expires: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
 
     # ``balance`` already excludes ``balance_frozen`` (pending withdrawals move
     # from one to the other), so the total is their sum.
@@ -144,6 +158,23 @@ class Merchant(Base):
     @property
     def available_balance(self) -> Decimal:
         return self.balance - self.balance_hold
+
+
+class MerchantTgUser(Base):
+    """A Telegram account linked to a merchant for the merchant bot (private chat)."""
+
+    __tablename__ = "merchant_tg_users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    merchant_id: Mapped[int] = mapped_column(ForeignKey("merchants.id"), index=True)
+    tg_user_id: Mapped[str] = mapped_column(String(32), unique=True)
+    tg_name: Mapped[str] = mapped_column(String(64), default="")
+    # What the bot is waiting for in this chat ("" = nothing), plus data collected so far.
+    state: Mapped[str] = mapped_column(String(16), default="")
+    state_data: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_tw)
+
+    merchant: Mapped["Merchant"] = relationship()
 
 
 class Team(Base):
