@@ -47,6 +47,7 @@ dl.kv dt{color:var(--muted)}
 dl.kv dd{margin:0}
 .pager{margin-top:10px;display:flex;gap:8px;align-items:center}
 code{background:#f3f4f6;padding:1px 4px;border-radius:4px}
+.proofs img{max-width:260px;max-height:420px;border:1px solid var(--line);border-radius:6px;display:block;margin-top:8px}
 .login{max-width:340px;margin:12vh auto}
 .login input{width:100%;margin-bottom:10px}
 @media (max-width:760px){.layout{flex-direction:column}nav.side{width:auto}main{padding:16px}}

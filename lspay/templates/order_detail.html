@@ -33,6 +33,18 @@
 </dl>
 </div>
 
+{% if o.attachments %}
+<h2>轉帳截圖（會員上傳）</h2>
+<div class="card proofs">
+  {% for a in o.attachments %}
+  <a href="{{ admin }}/order/{{ o.order_sid }}/proof/{{ a.id }}" target="_blank">
+    {% if a.content_type != 'image/heic' %}<img src="{{ admin }}/order/{{ o.order_sid }}/proof/{{ a.id }}" alt="轉帳截圖 {{ loop.index }}">{% else %}下載 HEIC 截圖{% endif %}
+  </a>
+  <div class="muted">{{ fmt(a.created_at) }}　{{ a.size // 1024 }}KB</div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if user.role in ('admin', 'reviewer') and not o.is_final %}
 <div class="card">
 {% if o.type == m.TYPE_RECEIVE %}

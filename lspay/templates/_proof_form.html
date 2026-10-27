@@ -1,0 +1,5 @@
+<form method="post" action="/cashier/{{ o.order_sid }}/proof" enctype="multipart/form-data">
+  <input type="hidden" name="t" value="{{ o.cashier_token }}">
+  <label class="btn green" id="proof-label" for="proof">{{ '再上傳一張截圖' if uploaded else '已完成轉帳，點我上傳轉帳截圖' }}</label>
+  <input class="hidden" type="file" id="proof" name="file" accept="image/*">
+</form>
