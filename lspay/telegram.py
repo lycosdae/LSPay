@@ -84,6 +84,8 @@ def render(order: m.Order) -> str:
             lines.append(f"會員登記轉出帳戶：{e(accounts)}")
         if order.receiving_account:
             lines.append(f"收款帳戶：{e(order.bank_name)} {e(mask(order.bank_no, 0, 5))}")
+        if order.attachments:
+            lines.append(f"📎 會員已上傳轉帳截圖 {len(order.attachments)} 張（請到後台查看）")
         if order.paid_from_bank_no:
             lines.append(f"實際轉出：{e(order.paid_from_bank_code)}-{e(mask(order.paid_from_bank_no, 0, 5))}")
     else:

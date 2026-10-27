@@ -16,6 +16,15 @@
     <div><button type="submit">儲存</button></div>
   </form>
 </div>
+<h2>LS支付 儲值連結</h2>
+<div class="card">
+{% if pay_url %}
+  <p class="muted" style="margin-top:0">這是會員專屬的儲值頁網址，傳給會員本人即可輸入金額建立儲值單。不要公開張貼。</p>
+  <div class="filters"><input id="payurl" value="{{ pay_url }}" readonly style="flex:1;min-width:260px"> <button type="button" class="sec" onclick="var i=document.getElementById('payurl');i.select();document.execCommand('copy');this.textContent='已複製'">複製</button> <a href="{{ pay_url }}" target="_blank">開啟</a></div>
+{% else %}
+  <p class="warn" style="margin:0">尚未設定 SESSION_SECRET，無法產生儲值連結。</p>
+{% endif %}
+</div>
 <h2>登記銀行帳戶</h2>
 <p class="muted">玩家入金時，實際轉出帳戶必須是這裡的帳戶之一（或該訂單 bank_no_check 帶入的帳戶）。</p>
 <div class="tablewrap"><table>

@@ -73,4 +73,7 @@ with db.session_scope() as s:
         )
     member = s.query(m.Member).first()
     member.team = team
+    pay_token = services.member_pay_token(member)
 print("seeded: admin / admin1234, rev1 / rev12345")
+if pay_token:
+    print(f"LS支付 member page ({member.name}): {db.settings.base_url}/pay/{pay_token}")

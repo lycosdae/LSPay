@@ -3,6 +3,8 @@
 Functions here change the session but never commit; callers commit.
 """
 
+import hashlib
+import hmac
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -526,3 +528,131 @@ def adjust_balance(db: Session, merchant: m.Merchant, delta: Decimal, actor_name
         raise ActionError("調整後餘額不可小於 0")
     locked.balance += delta
     db.add(m.AuditLog(actor=actor_name, action="balance_adjust", detail=f"{locked.name} {delta:+} {note}"))
+
+
+# --------------------------------------------------------------------------
+# LS支付 member deposit page and transfer screenshots
+# --------------------------------------------------------------------------
+
+MAX_OPEN_MEMBER_DEPOSITS = 3
+MAX_PROOFS_PER_ORDER = 3
+MAX_PROOF_BYTES = 8 * 1024 * 1024
+# A screenshot may still arrive a while after the deposit timed out.
+PROOF_GRACE = timedelta(hours=1)
+OPEN_STATUSES = (m.ST_NEW, m.ST_MATCHED, m.ST_ACCEPTED)
+
+
+def _pay_digest(member_id: int) -> str:
+    key = settings.session_secret.encode()
+    return hmac.new(key, f"member-pay:{member_id}".encode(), hashlib.sha256).hexdigest()[:24]
+
+
+def member_pay_token(member: m.Member) -> str:
+    """Token for the member's personal LS支付 link; empty when SESSION_SECRET is unset."""
+    if not settings.session_secret:
+        return ""
+    return f"{member.id}.{_pay_digest(member.id)}"
+
+
+def member_from_pay_token(db: Session, token: str) -> Optional[m.Member]:
+    if not settings.session_secret:
+        return None
+    mid, _, digest = (token or "").partition(".")
+    if not mid.isdigit() or not hmac.compare_digest(digest, _pay_digest(int(mid))):
+        return None
+    member = db.get(m.Member, int(mid))
+    if member is None or member.status != "active" or not member.merchant.enabled:
+        return None
+    return member
+
+
+def create_member_deposit(db: Session, member: m.Member, amount_text: str) -> m.Order:
+    """A deposit the member starts on the LS支付 page (no merchant API call)."""
+    text = (amount_text or "").strip().replace(",", "")
+    if not text.isdigit() or int(text) <= 0:
+        raise ApiError("請輸入正確的儲值金額（整數）")
+    amount = parse_amount(text)
+    if not member.bank_accounts:
+        raise ApiError("您尚未登記銀行帳戶，請先聯絡客服")
+    now = now_tw()
+    open_count = len(
+        db.scalars(
+            select(m.Order.id).where(
+                m.Order.member_id == member.id,
+                m.Order.type == m.TYPE_RECEIVE,
+                m.Order.status.in_(OPEN_STATUSES),
+                m.Order.end_time >= now,
+            )
+        ).all()
+    )
+    if open_count >= MAX_OPEN_MEMBER_DEPOSITS:
+        raise ApiError("您有尚未完成的儲值單，請完成或等待逾時後再建立")
+    acc = pick_receiving_account(db, amount)
+    if acc is None:
+        raise ApiError("目前沒有可用的收款帳戶，請稍後再試或聯絡客服")
+    merchant = member.merchant
+    order = m.Order(
+        merchant_id=merchant.id,
+        order_id="LS" + now.strftime("%y%m%d%H%M%S") + secrets.token_hex(3).upper(),
+        type=m.TYPE_RECEIVE,
+        member=member,
+        payer=member.name,
+        payer_cellphone=member.phone,
+        payer_pid=member.pid,
+        amount=amount,
+        fee=calc_fee(amount, merchant.receive_fee_rate),
+        message="LS支付儲值",
+        bank_no_check=",".join(f"{a.bank_code}-{a.bank_no}" for a in member.bank_accounts),
+        bank_no_check_title=member.name,
+        init_time=now,
+        end_time=now + timedelta(minutes=settings.member_deposit_timeout_minutes),
+        cashier_token=secrets.token_urlsafe(24),
+        status=m.ST_MATCHED,
+        receiving_account=acc,
+        bank_code=acc.bank_code,
+        bank_name=acc.bank_name,
+        bank_branch=acc.bank_branch,
+        bank_title=acc.bank_title,
+        bank_no=acc.bank_no,
+    )
+    acc.last_used_at = now
+    db.add(order)
+    _assign_sid(db, order)
+    _event(db, order, "member", member.name, "create", None, order.status)
+    return order
+
+
+def detect_image_type(data: bytes) -> str:
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[4:8] == b"ftyp" and data[8:12] in (b"heic", b"heix", b"mif1", b"heif"):
+        return "image/heic"
+    return ""
+
+
+def can_upload_proof(order: m.Order) -> bool:
+    if order.type != m.TYPE_RECEIVE or len(order.attachments) >= MAX_PROOFS_PER_ORDER:
+        return False
+    if order.status in OPEN_STATUSES:
+        return True
+    return order.status == m.ST_RECEIVE_TIMEOUT and order.end_time and now_tw() < order.end_time + PROOF_GRACE
+
+
+def add_proof(db: Session, order: m.Order, data: bytes) -> m.OrderAttachment:
+    if not can_upload_proof(order):
+        raise ApiError("此訂單已無法上傳截圖")
+    if not data:
+        raise ApiError("請選擇截圖檔案")
+    if len(data) > MAX_PROOF_BYTES:
+        raise ApiError("檔案太大，請上傳 8MB 以內的截圖")
+    ctype = detect_image_type(data)
+    if not ctype:
+        raise ApiError("只接受 JPG、PNG、WEBP 或 HEIC 圖片")
+    att = m.OrderAttachment(order=order, content_type=ctype, size=len(data), data=data)
+    db.add(att)
+    _event(db, order, "member", order.payer, "proof_upload", None, None, f"轉帳截圖 {len(data) // 1024}KB")
+    return att

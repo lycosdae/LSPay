@@ -1,29 +1,111 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>付款資訊 · LSPay</title><link rel="stylesheet" href="/static/style.css"></head>
+<meta name="robots" content="noindex">
+<title>LS支付 銀行轉帳</title><link rel="stylesheet" href="/static/pay.css"></head>
 <body>
-<div class="login card" style="max-width:420px">
-  <h1>轉帳付款資訊</h1>
-  {% if o.status in (m.ST_NEW, m.ST_MATCHED, m.ST_ACCEPTED) %}
-    {% if o.receiving_account_id %}
-    <dl class="kv">
-      <dt>訂單編號</dt><dd>{{ o.order_id }}</dd>
-      <dt>轉帳金額</dt><dd><b style="font-size:20px">{{ o.amount }}</b></dd>
-      <dt>銀行</dt><dd>{{ o.bank_code }} {{ o.bank_name }} {{ o.bank_branch }}</dd>
-      <dt>戶名</dt><dd>{{ o.bank_title }}</dd>
-      <dt>帳號</dt><dd><code style="font-size:18px">{{ o.bank_no }}</code></dd>
-      <dt>付款期限</dt><dd>{{ fmt(o.end_time) }}</dd>
-    </dl>
-    <p class="warn">請使用您登記的本人帳戶轉帳，並轉入「完全相同」的金額。使用其他帳戶或金額不符將無法入帳。</p>
-    {% else %}
-    <p>目前沒有可用的收款帳戶，請稍後再試或聯絡客服。</p>
-    {% endif %}
-  {% elif o.status == m.ST_DONE %}
-    <p>✅ 此訂單已完成入帳。</p>
+{% set amount_text = '{:,.0f}'.format(o.amount) if o.amount == o.amount|int else o.amount|string %}
+{% set amount_plain = (o.amount|int)|string if o.amount == o.amount|int else o.amount|string %}
+<div class="pay">
+  <div class="pay-head"><div class="logo">LS</div><h1>LS支付 銀行轉帳<small>訂單 {{ o.order_sid }}</small></h1></div>
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+
+  {% if o.status == m.ST_DONE %}
+    <div class="ok-box center">✅ 此筆儲值已完成入帳，金額 {{ amount_text }} 元。</div>
+  {% elif o.status in (m.ST_NEW, m.ST_MATCHED, m.ST_ACCEPTED) and o.receiving_account_id %}
+
+    <div class="deadline">請在 {{ fmt(o.end_time) }} 前使用 ATM／網路銀行轉帳完成支付<br>
+      <span class="muted" style="font-weight:400">剩餘時間 <span class="count" id="count" data-left="{{ remaining }}">--:--</span></span></div>
+
+    <div id="step-check" class="{{ 'hidden' if uploaded }}">
+      <div class="box">
+        <h2>注意事項</h2>
+        <ul class="notice">
+          <li>請正確填寫<b>付款人姓名</b>資料。</li>
+          <li>請使用<b>銀行帳戶對銀行帳戶</b>轉帳。</li>
+          <li>我們將會<b>核對</b>轉出帳戶、姓名與金額，資料不符將無法入帳。</li>
+          <li>轉帳時<b>請勿輸入任何備註、留言</b>等訊息。</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h2>請核對您的資料</h2>
+        <div class="muted">會員姓名</div>
+        <div class="member-name">{{ o.payer }}</div>
+        <div class="muted" style="margin-top:10px">請使用以下您登記的帳戶轉出</div>
+        {% for code, no in accounts %}
+        <div class="acct"><span>{{ code }} {{ bank_name(code) }}</span><b>{{ '*' * (no|length - 5) if no|length > 5 }}{{ no[-5:] }}</b></div>
+        {% endfor %}
+        <div class="muted" style="margin-top:10px">儲值金額</div>
+        <div class="amount">{{ amount_text }} 元</div>
+      </div>
+      <button class="btn" type="button" id="confirm">資料正確，確認</button>
+    </div>
+
+    <div id="step-pay" class="{{ 'hidden' if not uploaded }}">
+      <div class="box">
+        <h2>收款資訊</h2>
+        <div class="row"><div><div class="k">收款銀行代碼</div><div class="v">{{ o.bank_code }}</div></div><button class="copy" data-copy="{{ o.bank_code }}">複製</button></div>
+        <div class="row"><div><div class="k">收款銀行名稱</div><div class="v">{{ o.bank_name }}{% if o.bank_branch %} {{ o.bank_branch }}{% endif %}</div></div><button class="copy" data-copy="{{ o.bank_name }}">複製</button></div>
+        <div class="row"><div><div class="k">收款帳號</div><div class="v">{{ o.bank_no }}</div></div><button class="copy" data-copy="{{ o.bank_no }}">複製</button></div>
+        <div class="row"><div><div class="k">戶名</div><div class="v">{{ o.bank_title }}</div></div><button class="copy" data-copy="{{ o.bank_title }}">複製</button></div>
+        <div class="row"><div><div class="k">金額</div><div class="v">{{ amount_text }}</div></div><button class="copy" data-copy="{{ amount_plain }}">複製</button></div>
+      </div>
+      <p class="muted" style="margin:0 0 12px">請轉入「完全相同」的金額，並使用您登記的本人帳戶，轉帳時不要填寫備註。</p>
+      {% if uploaded %}<div class="ok-box">✅ 已收到您的轉帳截圖（{{ o.attachments|length }} 張），我們核對後會盡快入帳。</div>{% endif %}
+      {% if can_upload %}{% include "_proof_form.html" %}{% endif %}
+    </div>
+
+  {% elif can_upload %}
+    <div class="box">付款期限已過。如果您已經完成轉帳，請上傳轉帳截圖，我們會人工核對。</div>
+    {% if uploaded %}<div class="ok-box">✅ 已收到您的轉帳截圖（{{ o.attachments|length }} 張），我們核對後會盡快入帳。</div>{% endif %}
+    {% include "_proof_form.html" %}
+  {% elif o.status in (m.ST_NEW, m.ST_MATCHED, m.ST_ACCEPTED) %}
+    <div class="box">目前沒有可用的收款帳戶，請稍後再試或聯絡客服。</div>
   {% else %}
-    <p>此訂單已失效（{{ o.status_label }}），請重新建立訂單。</p>
+    <div class="box">此訂單已失效（{{ o.status_label }}），請重新建立儲值單。</div>
+    {% if uploaded %}<div class="ok-box">已收到您的轉帳截圖，如有疑問請聯絡客服。</div>{% endif %}
   {% endif %}
 </div>
+<script>
+(function () {
+  var c = document.getElementById('confirm');
+  if (c) c.onclick = function () {
+    document.getElementById('step-check').classList.add('hidden');
+    document.getElementById('step-pay').classList.remove('hidden');
+    window.scrollTo(0, 0);
+  };
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    var t = document.createElement('textarea');
+    t.value = text; t.setAttribute('readonly', ''); t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t);
+    return Promise.resolve();
+  }
+  document.querySelectorAll('.copy').forEach(function (b) {
+    b.onclick = function () {
+      copyText(b.getAttribute('data-copy')).then(function () {
+        b.textContent = '已複製'; b.classList.add('done');
+        setTimeout(function () { b.textContent = '複製'; b.classList.remove('done'); }, 1500);
+      });
+    };
+  });
+  var el = document.getElementById('count');
+  if (el) {
+    var end = Date.now() + parseInt(el.getAttribute('data-left'), 10) * 1000;
+    var tick = function () {
+      var s = Math.max(0, Math.round((end - Date.now()) / 1000));
+      el.textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+      if (s > 0) setTimeout(tick, 1000);
+    };
+    tick();
+  }
+  var f = document.getElementById('proof');
+  if (f) f.onchange = function () {
+    if (!f.files.length) return;
+    document.getElementById('proof-label').textContent = '上傳中…';
+    f.form.submit();
+  };
+})();
+</script>
 </body>
 </html>

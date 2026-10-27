@@ -28,6 +28,10 @@ class Settings:
 
     # Minutes a deposit order stays open before it times out (status 91).
     receive_timeout_minutes: int = field(default_factory=lambda: int(os.getenv("RECEIVE_TIMEOUT_MINUTES", "30")))
+    # Minutes a deposit created by a member on the LS支付 page stays open.
+    member_deposit_timeout_minutes: int = field(
+        default_factory=lambda: int(os.getenv("MEMBER_DEPOSIT_TIMEOUT_MINUTES", "10"))
+    )
     # Seconds between background sweeps (timeouts, callback retries). 0 disables the loop.
     sweep_interval_seconds: int = field(default_factory=lambda: int(os.getenv("SWEEP_INTERVAL_SECONDS", "60")))
     callback_max_attempts: int = field(default_factory=lambda: int(os.getenv("CALLBACK_MAX_ATTEMPTS", "6")))
