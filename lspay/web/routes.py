@@ -1,5 +1,6 @@
 """Admin web (server-rendered)."""
 
+import hashlib
 import pathlib
 import re
 import secrets
@@ -42,8 +43,20 @@ def money(value) -> str:
     return f"{value:,.0f}" if value == value.to_integral_value() else f"{value:,.2f}"
 
 
+def _static_version() -> str:
+    """Short hash of the static files so browsers fetch new CSS after an update."""
+    digest = hashlib.sha1()
+    for path in sorted(STATIC_DIR.glob("*")):
+        if path.is_file():
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:8]
+
+
+STATIC_DIR = pathlib.Path(__file__).resolve().parent.parent / "static"
+
 templates.env.globals.update(
     money=money,
+    static_v=_static_version(),
     fmt=fmt,
     m=m,
     bank_name=bank_name,
@@ -236,7 +249,13 @@ def order_list(
 
     total = db.scalar(select(func.count()).select_from(query.subquery()))
     sub = query.subquery()
-    totals = db.execute(select(func.coalesce(func.sum(sub.c.amount), 0), func.coalesce(func.sum(sub.c.fee), 0))).one()
+    totals = db.execute(
+        select(
+            func.coalesce(func.sum(sub.c.amount), 0),
+            func.coalesce(func.sum(sub.c.fee), 0),
+            func.coalesce(func.sum(sub.c.agent_fee), 0),
+        )
+    ).one()
     page = max(page, 1)
     order_by = m.Order.id.asc() if view == "pending" else m.Order.id.desc()
     rows = db.scalars(
@@ -258,6 +277,7 @@ def order_list(
         total=total,
         sum_amount=totals[0],
         sum_fee=totals[1],
+        sum_agent=totals[2],
         page=page,
         pages=max((total + PAGE - 1) // PAGE, 1),
         merchants=merchants,
@@ -837,6 +857,8 @@ def merchant_settings(
     password: str = Form(""),
     allow_manual_withdraw: str = Form("0"),
     allow_manual_receive: str = Form("0"),
+    agent_rate: str = Form("0"),
+    balance_hold: str = Form("0"),
     user=Depends(require_admin),
     db: Session = Depends(get_db),
     _=Depends(check_csrf),
@@ -869,6 +891,8 @@ def merchant_settings(
         db.add(m.AuditLog(actor=user.label, action="merchant_password", detail=merchant.name))
     merchant.allow_manual_withdraw = allow_manual_withdraw == "1"
     merchant.allow_manual_receive = allow_manual_receive == "1"
+    merchant.agent_rate = _non_negative(agent_rate, "中人(%)")
+    merchant.balance_hold = _non_negative(balance_hold, "凍結金額")
     merchant.name = name.strip()
     merchant.login_name = login_name
     merchant.enabled = enabled == "1"

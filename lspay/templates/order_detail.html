@@ -8,7 +8,7 @@
   <dt>商戶 / 商戶單號</dt><dd>{{ o.merchant.name }} / {{ o.order_id }}</dd>
   <dt>會員</dt><dd>{% if o.member_id %}<a href="{{ admin }}/members/{{ o.member_id }}">{{ o.payer }}</a>{% else %}{{ o.payer }}{% endif %}
       　電話 {{ o.payer_cellphone }}　身分證 {{ mask(o.payer_pid) }}</dd>
-  <dt>金額 / 手續費</dt><dd><b>{{ o.amount }}</b> / {{ o.fee }}</dd>
+  <dt>金額 / 手續費</dt><dd><b>{{ o.amount }}</b> / {{ o.fee }}{% if o.agent_fee %}　<span class="muted">中人 {{ o.agent_fee }}，平台淨收 {{ o.fee - o.agent_fee }}</span>{% endif %}</dd>
   {% if o.type == m.TYPE_RECEIVE %}
   <dt>收款帳戶</dt><dd>{% if o.receiving_account %}{{ o.bank_code }} {{ o.bank_name }} {{ o.bank_title }} {{ o.bank_no }}{% else %}<span class="warn">未配對（沒有可用收款帳戶）</span>{% endif %}</dd>
   <dt>會員登記轉出帳戶</dt><dd>

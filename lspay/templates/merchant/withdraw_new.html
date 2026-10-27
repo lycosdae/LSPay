@@ -3,17 +3,25 @@
 {% block content %}
 <h1>手動建立付款訂單</h1>
 {% if error %}<div class="flash">❌ {{ error }}</div>{% endif %}
-<div class="card" style="max-width:560px">
-<form method="post" class="stack-form" onsubmit="return confirm('確認建立這筆付款訂單？金額與手續費會先從可動用商餘凍結。')">
+<div class="card form-card">
+<form method="post" class="form-grid" onsubmit="return confirm('確認建立這筆付款訂單？金額會先從可動用餘額凍結。')">
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  <label>商戶<input value="{{ mc.client_sid }} {{ mc.login_name }}" disabled></label>
-  <label>玩家姓名<input name="payer" value="{{ form.payer }}" required maxlength="15"></label>
-  <label>銀行<input name="bank_name" value="{{ form.bank_name }}" required maxlength="20" placeholder="例如 永豐 或 807"></label>
-  <label>戶名<input name="bank_title" value="{{ form.bank_title }}" required maxlength="20"></label>
-  <label>帳號<input name="bank_no" value="{{ form.bank_no }}" required maxlength="30" inputmode="numeric"></label>
-  <label>金額<input name="amount" value="{{ form.amount }}" required inputmode="decimal"></label>
-  <p class="muted" style="margin:0">可動用商餘：{{ money(mc.available_balance) }}　付款費率：{{ mc.withdraw_fee_rate|float }}% + 每筆 {{ money(mc.withdraw_fee_fixed) }}</p>
-  <div><button type="submit">新增</button></div>
+  <label for="f-mc">商戶</label>
+  <input id="f-mc" value="{{ mc.client_sid }} {{ mc.login_name }}" disabled>
+  <label for="f-payer">玩家姓名</label>
+  <input id="f-payer" name="payer" value="{{ form.payer }}" required maxlength="15">
+  <label for="f-bank">銀行</label>
+  <input id="f-bank" name="bank_name" value="{{ form.bank_name }}" required maxlength="20" placeholder="例如 永豐 或 807">
+  <label for="f-title">戶名</label>
+  <input id="f-title" name="bank_title" value="{{ form.bank_title }}" required maxlength="20">
+  <label for="f-no">帳號</label>
+  <input id="f-no" name="bank_no" value="{{ form.bank_no }}" required maxlength="30" inputmode="numeric">
+  <label for="f-amount">金額</label>
+  <input id="f-amount" name="amount" value="{{ form.amount }}" required inputmode="decimal">
+  <span></span>
+  <p class="muted hint">可動用餘額：{{ money(mc.available_balance) }}</p>
+  <span></span>
+  <div class="actions"><button type="submit">新增</button></div>
 </form>
 </div>
 {% endblock %}

@@ -19,7 +19,7 @@
 <div class="tablewrap"><table>
 <tr><th>Client SID</th><th>商戶</th><th class="num">可用餘額</th><th class="num">凍結金額</th><th>狀態</th></tr>
 {% for mc in merchants %}
-<tr><td>{{ mc.client_sid }}</td><td>{{ mc.name }}</td><td class="num">{{ mc.balance }}</td><td class="num">{{ mc.balance_frozen }}</td><td>{{ '啟用' if mc.enabled else '停用' }}</td></tr>
+<tr><td>{{ mc.client_sid }}</td><td>{{ mc.name }}</td><td class="num">{{ mc.available_balance }}</td><td class="num">{{ mc.balance_frozen + mc.balance_hold }}</td><td>{{ '啟用' if mc.enabled else '停用' }}</td></tr>
 {% else %}<tr><td colspan="5" class="muted">尚無商戶</td></tr>{% endfor %}
 </table></div>
 {% endblock %}

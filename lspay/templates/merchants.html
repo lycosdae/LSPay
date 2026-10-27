@@ -40,8 +40,8 @@
   <td class="num">{{ limit(mc.withdraw_max) }} / {{ limit(mc.withdraw_min) }}</td>
   <td class="num">{{ mc.receive_fee_rate|float }}% / {{ money(mc.receive_fee_fixed) }}</td>
   <td class="num">{{ mc.withdraw_fee_rate|float }}% / {{ money(mc.withdraw_fee_fixed) }}</td>
-  <td class="num">{{ money(mc.balance) }}</td>
-  <td class="num">{{ money(mc.balance_frozen) }}</td>
+  <td class="num">{{ money(mc.total_balance) }}</td>
+  <td class="num">{{ money(mc.balance_frozen + mc.balance_hold) }}</td>
   <td class="num"><b>{{ money(mc.available_balance) }}</b></td>
   <td class="num">{{ yr[0] }} / {{ yw[0] }}</td>
   <td class="num">{{ money(yr[1]) }} / {{ money(yw[1]) }}</td>
@@ -70,6 +70,8 @@
         <label>登入帳號（英文）<input name="login_name" value="{{ mc.login_name }}" maxlength="32" pattern="[A-Za-z0-9_.\-]*"></label>
         <label>商戶有效{{ yn('enabled', mc.enabled) }}</label>
         <label>測試模式{{ yn('test_mode', mc.test_mode) }}</label>
+        <label>中人（%）<input name="agent_rate" value="{{ mc.agent_rate }}" inputmode="decimal"></label>
+        <label>凍結金額（人工圈存，不可出款）<input name="balance_hold" value="{{ mc.balance_hold }}" inputmode="decimal"></label>
         <label>商戶顏色<input type="color" name="color" value="{{ mc.color or '#94a3b8' }}"></label>
         <label>備註<textarea name="note" rows="2">{{ mc.note }}</textarea></label>
       </fieldset>
