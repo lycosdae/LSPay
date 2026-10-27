@@ -128,11 +128,14 @@ def keyboard(order: m.Order) -> Optional[dict]:
 def chat_for(order: m.Order) -> str:
     if order.member and order.member.team and order.member.team.tg_chat_id:
         return order.member.team.tg_chat_id
+    if order.merchant.tg_chat_id:
+        return order.merchant.tg_chat_id
     return settings.telegram_chat_id
 
 
 def known_chats(db: Session) -> set[str]:
     chats = {c for c in db.scalars(select(m.Team.tg_chat_id).where(m.Team.tg_chat_id != "")).all()}
+    chats |= set(db.scalars(select(m.Merchant.tg_chat_id).where(m.Merchant.tg_chat_id != "")).all())
     if settings.telegram_chat_id:
         chats.add(settings.telegram_chat_id)
     return chats

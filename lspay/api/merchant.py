@@ -90,13 +90,10 @@ async def order_receive(request: Request, tasks: BackgroundTasks, db: Session = 
         "init_time": fmt(order.init_time),
         "fronttable_url": cashier_url(request, order),
     }
-    if order.receiving_account_id:
-        data.update(
-            bank_code=order.bank_code,
-            bank_title=order.bank_title,
-            bank_name=order.bank_name,
-            bank_no=order.bank_no,
-        )
+    if order.receiving_account_id and merchant.return_bank_info:
+        data.update(bank_code=order.bank_code, bank_name=order.bank_name, bank_no=order.bank_no)
+        if merchant.return_bank_title:
+            data["bank_title"] = order.bank_title
     return {"data": jsonable(data), "code": 200}
 
 

@@ -34,7 +34,16 @@ from .auth import (
 )
 
 templates = Jinja2Templates(directory=str(pathlib.Path(__file__).resolve().parent.parent / "templates"))
+
+
+def money(value) -> str:
+    """1234.5 -> '1,234.50', 1000 -> '1,000'."""
+    value = Decimal(value or 0)
+    return f"{value:,.0f}" if value == value.to_integral_value() else f"{value:,.2f}"
+
+
 templates.env.globals.update(
+    money=money,
     fmt=fmt,
     m=m,
     bank_name=bank_name,
@@ -703,10 +712,37 @@ def change_password(
 # --------------------------------------------------------------------------
 
 
+LOGIN_NAME_RE = re.compile(r"[A-Za-z0-9_.-]{1,32}")
+
+
+def merchant_day_stats(db: Session) -> dict:
+    """Completed orders yesterday and today per merchant: {mid: {"today"|"yesterday": {type: (count, sum)}}}."""
+    today = now_tw().replace(hour=0, minute=0, second=0)
+    yesterday = today - timedelta(days=1)
+    is_today = case((m.Order.finish_time >= today, 1), else_=0)
+    rows = db.execute(
+        select(m.Order.merchant_id, m.Order.type, is_today, func.count(), func.coalesce(func.sum(m.Order.amount), 0))
+        .where(m.Order.status == m.ST_DONE, m.Order.finish_time >= yesterday)
+        .group_by(m.Order.merchant_id, m.Order.type, is_today)
+    ).all()
+    out: dict = {}
+    for mid, otype, today_flag, count, total in rows:
+        day = out.setdefault(mid, {"today": {}, "yesterday": {}})["today" if today_flag else "yesterday"]
+        day[otype] = (count, Decimal(total))
+    return out
+
+
 @router.get("/merchants", response_class=HTMLResponse)
 def merchant_list(request: Request, user=Depends(require_admin), db: Session = Depends(get_db)):
     merchants = db.scalars(select(m.Merchant).order_by(m.Merchant.id)).all()
-    return render(request, "merchants.html", user, merchants=merchants, reveal=request.session.pop("reveal", None))
+    return render(
+        request,
+        "merchants.html",
+        user,
+        merchants=merchants,
+        stats=merchant_day_stats(db),
+        reveal=request.session.pop("reveal", None),
+    )
 
 
 def _new_client_sid(db: Session) -> str:
@@ -717,46 +753,131 @@ def _new_client_sid(db: Session) -> str:
     return sid
 
 
+def _check_login_name(db: Session, login_name: str, merchant_id: Optional[int] = None) -> Optional[str]:
+    if not login_name:
+        return None
+    if not LOGIN_NAME_RE.fullmatch(login_name):
+        return "❌ 登入帳號只能用英文、數字和 _ . -"
+    taken = db.scalar(select(m.Merchant.id).where(m.Merchant.login_name == login_name))
+    if taken and taken != merchant_id:
+        return "❌ 此登入帳號已被其他商戶使用"
+    return None
+
+
 @router.post("/merchants")
-def merchant_save(
+def merchant_create(
     request: Request,
-    merchant_id: str = Form(""),
     name: str = Form(...),
-    receive_fee_rate: str = Form("0"),
-    withdraw_fee_rate: str = Form("0"),
-    withdraw_fee_fixed: str = Form("0"),
-    ip_whitelist: str = Form(""),
-    enabled: str = Form(""),
+    login_name: str = Form(""),
     user=Depends(require_admin),
     db: Session = Depends(get_db),
     _=Depends(check_csrf),
 ):
-    if merchant_id.isdigit():
-        merchant = db.get(m.Merchant, int(merchant_id))
-        if merchant is None:
-            raise HTTPException(404)
-        merchant.enabled = bool(enabled)
-        created = False
-    else:
-        merchant = m.Merchant(
-            client_sid=_new_client_sid(db),
-            api_key=secrets.token_hex(16),
-            sign_key=secrets.token_hex(16),
-            enabled=True,
-        )
-        db.add(merchant)
-        created = True
-    merchant.name = name.strip()
-    merchant.receive_fee_rate = to_decimal(receive_fee_rate, "收款費率")
-    merchant.withdraw_fee_rate = to_decimal(withdraw_fee_rate, "付款費率")
-    merchant.withdraw_fee_fixed = to_decimal(withdraw_fee_fixed, "付款固定手續費")
-    merchant.ip_whitelist = ",".join(ip.strip() for ip in ip_whitelist.replace("\n", ",").split(",") if ip.strip())
-    db.add(m.AuditLog(actor=user.label, action="merchant_save", detail=merchant.name))
+    login_name = login_name.strip()
+    error = _check_login_name(db, login_name)
+    if error:
+        return redirect("/merchants", error, request)
+    merchant = m.Merchant(
+        client_sid=_new_client_sid(db),
+        name=name.strip(),
+        login_name=login_name,
+        api_key=secrets.token_hex(16),
+        sign_key=secrets.token_hex(16),
+        enabled=True,
+    )
+    db.add(merchant)
+    db.add(m.AuditLog(actor=user.label, action="merchant_create", detail=merchant.name))
     db.commit()
-    if created:
-        request.session["reveal"] = merchant.id
-        return redirect("/merchants", "✅ 商戶已建立，請立即複製金鑰", request)
-    return redirect("/merchants", "✅ 已儲存", request)
+    request.session["reveal"] = merchant.id
+    return redirect("/merchants", "✅ 商戶已建立，請立即複製金鑰，並按「設定」填寫費率與限額", request)
+
+
+def _non_negative(text: str, field: str) -> Decimal:
+    value = to_decimal(text, field)
+    if value < 0:
+        raise HTTPException(400, f"{field} 不能是負數")
+    return value
+
+
+def _int_field(text: str, field: str) -> int:
+    text = (text or "0").strip()
+    if not text.isdigit():
+        raise HTTPException(400, f"{field} 需為 0 以上的整數")
+    return int(text)
+
+
+@router.post("/merchants/{mid}/settings")
+def merchant_settings(
+    request: Request,
+    mid: int,
+    name: str = Form(...),
+    login_name: str = Form(""),
+    enabled: str = Form("0"),
+    can_receive: str = Form("0"),
+    can_withdraw: str = Form("0"),
+    test_mode: str = Form("0"),
+    receive_min: str = Form("0"),
+    receive_max: str = Form("0"),
+    withdraw_min: str = Form("0"),
+    withdraw_max: str = Form("0"),
+    daily_receive_limit: str = Form("0"),
+    receive_fee_rate: str = Form("0"),
+    receive_fee_fixed: str = Form("0"),
+    withdraw_fee_rate: str = Form("0"),
+    withdraw_fee_fixed: str = Form("0"),
+    ip_whitelist: str = Form(""),
+    tg_chat_id: str = Form(""),
+    same_name_max_orders: str = Form("0"),
+    same_name_window_minutes: str = Form("10"),
+    return_bank_info: str = Form("0"),
+    return_bank_title: str = Form("0"),
+    color: str = Form(""),
+    note: str = Form(""),
+    user=Depends(require_admin),
+    db: Session = Depends(get_db),
+    _=Depends(check_csrf),
+):
+    merchant = db.get(m.Merchant, mid)
+    if merchant is None:
+        raise HTTPException(404)
+    login_name = login_name.strip()
+    error = _check_login_name(db, login_name, merchant.id)
+    if error:
+        return redirect("/merchants", error, request)
+    limits = {
+        "receive_min": _non_negative(receive_min, "最低收/筆"),
+        "receive_max": _non_negative(receive_max, "最高收/筆"),
+        "withdraw_min": _non_negative(withdraw_min, "最低付/筆"),
+        "withdraw_max": _non_negative(withdraw_max, "最高付/筆"),
+    }
+    if (limits["receive_max"] and limits["receive_min"] > limits["receive_max"]) or (
+        limits["withdraw_max"] and limits["withdraw_min"] > limits["withdraw_max"]
+    ):
+        return redirect("/merchants", "❌ 最低金額不能大於最高金額", request)
+    for key, value in limits.items():
+        setattr(merchant, key, value)
+    merchant.name = name.strip()
+    merchant.login_name = login_name
+    merchant.enabled = enabled == "1"
+    merchant.can_receive = can_receive == "1"
+    merchant.can_withdraw = can_withdraw == "1"
+    merchant.test_mode = test_mode == "1"
+    merchant.daily_receive_limit = _non_negative(daily_receive_limit, "每日最大收量")
+    merchant.receive_fee_rate = _non_negative(receive_fee_rate, "收款費率")
+    merchant.receive_fee_fixed = _non_negative(receive_fee_fixed, "收款單筆手續費")
+    merchant.withdraw_fee_rate = _non_negative(withdraw_fee_rate, "付款費率")
+    merchant.withdraw_fee_fixed = _non_negative(withdraw_fee_fixed, "付款單筆手續費")
+    merchant.ip_whitelist = ",".join(ip.strip() for ip in re.split(r"[,\s]+", ip_whitelist) if ip.strip())
+    merchant.tg_chat_id = tg_chat_id.strip()
+    merchant.same_name_max_orders = _int_field(same_name_max_orders, "同姓名單數")
+    merchant.same_name_window_minutes = _int_field(same_name_window_minutes, "同姓名判定時間")
+    merchant.return_bank_info = return_bank_info == "1"
+    merchant.return_bank_title = return_bank_title == "1"
+    merchant.color = color if re.fullmatch(r"#[0-9a-fA-F]{6}", color or "") else ""
+    merchant.note = note
+    db.add(m.AuditLog(actor=user.label, action="merchant_settings", detail=f"{merchant.client_sid} {merchant.name}"))
+    db.commit()
+    return redirect("/merchants", f"✅ 已儲存 {merchant.name} 的設定", request)
 
 
 @router.post("/merchants/{mid}/keys")
