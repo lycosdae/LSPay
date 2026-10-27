@@ -34,6 +34,10 @@ with db.session_scope() as s:
         balance=Decimal("50000"),
         receive_fee_rate=Decimal("1.5"),
         withdraw_fee_fixed=Decimal("10"),
+        login_name="demo1688",
+        password_hash=hash_password("demo12345"),
+        allow_manual_withdraw=True,
+        allow_manual_receive=True,
     )
     s.add(mc)
     s.add(
@@ -74,6 +78,6 @@ with db.session_scope() as s:
     member = s.query(m.Member).first()
     member.team = team
     pay_token = services.member_pay_token(member)
-print("seeded: admin / admin1234, rev1 / rev12345")
+print("seeded: admin / admin1234, rev1 / rev12345, merchant backend demo1688 / demo12345")
 if pay_token:
     print(f"LS支付 member page ({member.name}): {db.settings.base_url}/pay/{pay_token}")

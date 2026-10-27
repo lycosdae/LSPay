@@ -1,0 +1,27 @@
+{% extends "merchant/base.html" %}
+{% from "_macros.html" import status_tag %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<form class="filters" method="get">
+  <input name="q" value="{{ q }}" placeholder="單號 / 玩家姓名">
+  <button type="submit">查詢</button><span class="muted">共 {{ total }} 筆</span>
+</form>
+<div class="tablewrap"><table>
+<tr><th>系統單號</th><th>商戶單號</th><th>玩家</th><th class="num">金額</th><th class="num">手續費</th>
+  {% if kind == 'withdraw' %}<th>收款人 / 銀行 / 帳號</th>{% endif %}<th>狀態</th><th>建立時間</th><th>完成時間</th></tr>
+{% for o in rows %}
+<tr>
+  <td>{{ o.order_sid }}</td><td>{{ o.order_id }}</td><td>{{ o.payer }}</td>
+  <td class="num">{{ money(o.amount) }}</td><td class="num">{{ money(o.fee) }}</td>
+  {% if kind == 'withdraw' %}<td>{{ o.bank_title }} {{ o.bank_name }} {{ o.bank_no }}</td>{% endif %}
+  <td>{{ status_tag(o) }}</td><td>{{ fmt(o.init_time) }}</td><td>{{ fmt(o.finish_time) or '' }}</td>
+</tr>
+{% else %}<tr><td colspan="9" class="muted">沒有資料</td></tr>{% endfor %}
+</table></div>
+<div class="pager">
+  {% if page_no > 1 %}<a href="?q={{ q|urlencode }}&p={{ page_no - 1 }}">上一頁</a>{% endif %}
+  <span class="muted">第 {{ page_no }} / {{ pages }} 頁</span>
+  {% if page_no < pages %}<a href="?q={{ q|urlencode }}&p={{ page_no + 1 }}">下一頁</a>{% endif %}
+</div>
+{% endblock %}

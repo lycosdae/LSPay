@@ -741,6 +741,7 @@ def merchant_list(request: Request, user=Depends(require_admin), db: Session = D
         user,
         merchants=merchants,
         stats=merchant_day_stats(db),
+        merchant_url=settings.base_url + settings.merchant_path,
         reveal=request.session.pop("reveal", None),
     )
 
@@ -833,6 +834,9 @@ def merchant_settings(
     return_bank_title: str = Form("0"),
     color: str = Form(""),
     note: str = Form(""),
+    password: str = Form(""),
+    allow_manual_withdraw: str = Form("0"),
+    allow_manual_receive: str = Form("0"),
     user=Depends(require_admin),
     db: Session = Depends(get_db),
     _=Depends(check_csrf),
@@ -854,8 +858,17 @@ def merchant_settings(
         limits["withdraw_max"] and limits["withdraw_min"] > limits["withdraw_max"]
     ):
         return redirect("/merchants", "❌ 最低金額不能大於最高金額", request)
+    if password and len(password) < 8:
+        return redirect("/merchants", "❌ 商戶後台密碼至少 8 個字元", request)
+    if password and not login_name:
+        return redirect("/merchants", "❌ 請先設定登入帳號，才能設定商戶後台密碼", request)
     for key, value in limits.items():
         setattr(merchant, key, value)
+    if password:
+        merchant.password_hash = hash_password(password)
+        db.add(m.AuditLog(actor=user.label, action="merchant_password", detail=merchant.name))
+    merchant.allow_manual_withdraw = allow_manual_withdraw == "1"
+    merchant.allow_manual_receive = allow_manual_receive == "1"
     merchant.name = name.strip()
     merchant.login_name = login_name
     merchant.enabled = enabled == "1"
@@ -922,6 +935,15 @@ def merchant_info_text(merchant: m.Merchant) -> str:
         *(ips or ["（尚未設定，請洽 LSPay 管理員）"]),
         "",
     ]
+    if merchant.login_name:
+        lines += [
+            "商戶後台",
+            "=" * 47,
+            f"後台網址: {settings.base_url}{settings.merchant_path}",
+            f"後台帳號: {merchant.login_name}",
+            "後台密碼: （由管理員另行提供）",
+            "",
+        ]
     return "\r\n".join(lines)
 
 

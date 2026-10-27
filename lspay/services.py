@@ -212,11 +212,18 @@ def _optional(data: dict, key: str, max_len: int) -> str:
     return val
 
 
-def _require_url(data: dict) -> str:
+def _require_url(data: dict, required: bool = True) -> str:
+    if not required and not str(data.get("callback") or "").strip():
+        return ""
     url = _require(data, "callback", 256)
     if not re.match(r"^https?://[^\s/]+", url):
         raise ApiError("callback Format Error.")
     return url
+
+
+def manual_order_id() -> str:
+    """Order number for orders a merchant creates by hand in the merchant backend."""
+    return "M" + now_tw().strftime("%y%m%d%H%M%S") + secrets.token_hex(3).upper()
 
 
 def _check_duplicate(db: Session, merchant: m.Merchant, order_id: str) -> None:
@@ -299,11 +306,12 @@ def check_withdraw_allowed(merchant: m.Merchant, amount: Decimal) -> None:
         raise ApiError("amount Out Of Range.")
 
 
-def create_receive(db: Session, merchant: m.Merchant, data: dict) -> m.Order:
+def create_receive(db: Session, merchant: m.Merchant, data: dict, source: str = "api") -> m.Order:
+    """``source`` is "api" for the merchant API or "merchant" for the merchant backend (callback optional)."""
     payer = _require(data, "payer", 15)
     order_id = _require(data, "order_id", 20)
     amount = parse_amount(data.get("amount"))
-    callback = _require_url(data)
+    callback = _require_url(data, required=source == "api")
     message = _optional(data, "message", 256)
     phone = _optional(data, "payer_cellphone", 20)
     pid = _optional(data, "payer_pid", 20)
@@ -352,11 +360,12 @@ def create_receive(db: Session, merchant: m.Merchant, data: dict) -> m.Order:
         order.bank_no = acc.bank_no
         order.status = m.ST_MATCHED
     _assign_sid(db, order)
-    _event(db, order, "api", merchant.name, "create", None, order.status)
+    _event(db, order, source, merchant.name, "create", None, order.status)
     return order
 
 
-def create_withdraw(db: Session, merchant: m.Merchant, data: dict) -> m.Order:
+def create_withdraw(db: Session, merchant: m.Merchant, data: dict, source: str = "api") -> m.Order:
+    """``source`` is "api" for the merchant API or "merchant" for the merchant backend (callback optional)."""
     payer = _require(data, "payer", 15)
     order_id = _require(data, "order_id", 20)
     amount = parse_amount(data.get("amount"))
@@ -364,7 +373,7 @@ def create_withdraw(db: Session, merchant: m.Merchant, data: dict) -> m.Order:
     bank_name = _require(data, "bank_name", 20)
     bank_branch = _optional(data, "bank_branch", 20)
     bank_no = _require(data, "bank_no", 30)
-    callback = _require_url(data)
+    callback = _require_url(data, required=source == "api")
     message = _optional(data, "message", 256)
     phone = _optional(data, "payer_cellphone", 20)
     pid = _optional(data, "payer_pid", 20)
@@ -409,7 +418,7 @@ def create_withdraw(db: Session, merchant: m.Merchant, data: dict) -> m.Order:
     )
     db.add(order)
     _assign_sid(db, order)
-    _event(db, order, "api", merchant.name, "create", None, order.status)
+    _event(db, order, source, merchant.name, "create", None, order.status)
     return order
 
 
