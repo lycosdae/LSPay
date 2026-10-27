@@ -189,3 +189,19 @@ def test_agent_rate_and_hold(client, admin, merchant, account, session):
     assert withdraw(client, amount=1000)["code"] == 200
     bad = client.post(ADMIN + f"/merchants/{merchant.id}/settings", data={**data, "agent_rate": "-1"})
     assert "中人" in bad.text or bad.status_code == 400
+
+
+def test_settle_account_and_referrer(client, admin, merchant, session):
+    other = m.Merchant(name="推薦人", client_sid="0002", api_key="k", sign_key="s", invite_code="ABC234")
+    session.add(other)
+    session.commit()
+    csrf = login(client)
+    data = {**SETTINGS, "csrf": csrf, "settle_bank_code": "822", "settle_bank_no": "0123456789"}
+    data.update(settle_bank_title="信鑫公司", referrer_code="abc234", receive_open="0")
+    client.post(ADMIN + f"/merchants/{merchant.id}/settings", data=data)
+    session.refresh(merchant)
+    assert merchant.settle_bank_title == "信鑫公司" and merchant.referred_by_id == other.id
+    assert not merchant.receive_open and merchant.invite_code
+    res = client.post(ADMIN + f"/merchants/{merchant.id}/settings", data={**data, "referrer_code": "NOPE99"})
+    assert "找不到這個推薦人邀請碼" in res.text
+    assert "商戶關閉" in client.get(ADMIN + "/merchants").text

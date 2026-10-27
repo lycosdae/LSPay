@@ -18,6 +18,8 @@
   <a href="{{ mp }}/orders/withdraw" class="{{ 'on' if p == '/orders/withdraw' }}">付款訂單列表</a>
   {% if mc.allow_manual_withdraw %}<a href="{{ mp }}/withdraw/new" class="{{ 'on' if p == '/withdraw/new' }}">手動建立付款訂單</a>{% endif %}
   {% if mc.allow_manual_receive %}<a href="{{ mp }}/receive/new" class="{{ 'on' if p == '/receive/new' }}">手動建立代收訂單</a>{% endif %}
+  <div class="sec">設定</div>
+  <a href="{{ mp }}/settings" class="{{ 'on' if p == '/settings' }}">Telegram 與帳戶設定</a>
   <form method="post" action="{{ mp }}/logout">
     <div class="muted" style="margin-bottom:6px">{{ mc.client_sid }} {{ mc.login_name }}</div>
     <button class="sec" type="submit">登出</button>

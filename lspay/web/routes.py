@@ -755,11 +755,21 @@ def merchant_day_stats(db: Session) -> dict:
 @router.get("/merchants", response_class=HTMLResponse)
 def merchant_list(request: Request, user=Depends(require_admin), db: Session = Depends(get_db)):
     merchants = db.scalars(select(m.Merchant).order_by(m.Merchant.id)).all()
+    by_id = {mc.id: mc for mc in merchants}
+    if any(not mc.invite_code for mc in merchants):
+        for mc in merchants:
+            services.ensure_invite_code(db, mc)
+        db.commit()
+    tg_links: dict = {}
+    for link in db.scalars(select(m.MerchantTgUser).order_by(m.MerchantTgUser.id)):
+        tg_links.setdefault(link.merchant_id, []).append(link.tg_name or link.tg_user_id)
     return render(
         request,
         "merchants.html",
         user,
         merchants=merchants,
+        by_id=by_id,
+        tg_links=tg_links,
         stats=merchant_day_stats(db),
         merchant_url=settings.base_url + settings.merchant_path,
         reveal=request.session.pop("reveal", None),
@@ -859,6 +869,12 @@ def merchant_settings(
     allow_manual_receive: str = Form("0"),
     agent_rate: str = Form("0"),
     balance_hold: str = Form("0"),
+    receive_open: str = Form("1"),
+    withdraw_open: str = Form("1"),
+    settle_bank_code: str = Form(""),
+    settle_bank_no: str = Form(""),
+    settle_bank_title: str = Form(""),
+    referrer_code: str = Form(""),
     user=Depends(require_admin),
     db: Session = Depends(get_db),
     _=Depends(check_csrf),
@@ -884,6 +900,21 @@ def merchant_settings(
         return redirect("/merchants", "❌ 商戶後台密碼至少 8 個字元", request)
     if password and not login_name:
         return redirect("/merchants", "❌ 請先設定登入帳號，才能設定商戶後台密碼", request)
+    referrer = services.merchant_by_invite(db, referrer_code)
+    if referrer_code.strip() and (referrer is None or referrer.id == merchant.id):
+        return redirect("/merchants", "❌ 找不到這個推薦人邀請碼", request)
+    settle = (settle_bank_code.strip(), settle_bank_no.strip(), settle_bank_title.strip())
+    current = (merchant.settle_bank_code, merchant.settle_bank_no, merchant.settle_bank_title)
+    if any(settle) and settle != current:
+        try:
+            services.set_settle_account(db, merchant, *settle, actor=user.label)
+        except services.ActionError as exc:
+            return redirect("/merchants", f"❌ 結算帳戶：{exc}", request)
+    elif not any(settle):
+        merchant.settle_bank_code = merchant.settle_bank_no = merchant.settle_bank_title = ""
+    merchant.referred_by_id = referrer.id if referrer else 0
+    merchant.receive_open = receive_open == "1"
+    merchant.withdraw_open = withdraw_open == "1"
     for key, value in limits.items():
         setattr(merchant, key, value)
     if password:

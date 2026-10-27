@@ -34,8 +34,8 @@
       {% if not mc.enabled %}<span class="tag bad">停用</span>{% endif %}{% if mc.test_mode %}<span class="tag pending">測試</span>{% endif %}</div>
     <div class="muted">{{ mc.login_name or '（未設定登入帳號）' }}</div>
   </td>
-  <td class="center">{{ mark(mc.can_receive) }}</td>
-  <td class="center">{{ mark(mc.can_withdraw) }}</td>
+  <td class="center">{{ mark(mc.can_receive) }}{% if mc.can_receive and not mc.receive_open %}<div class="muted">商戶關閉</div>{% endif %}</td>
+  <td class="center">{{ mark(mc.can_withdraw) }}{% if mc.can_withdraw and not mc.withdraw_open %}<div class="muted">商戶關閉</div>{% endif %}</td>
   <td class="num">{{ limit(mc.receive_max) }} / {{ limit(mc.receive_min) }}</td>
   <td class="num">{{ limit(mc.withdraw_max) }} / {{ limit(mc.withdraw_min) }}</td>
   <td class="num">{{ mc.receive_fee_rate|float }}% / {{ money(mc.receive_fee_fixed) }}</td>
@@ -103,6 +103,17 @@
         <label>密碼{% if mc.password_hash %}（已設定）{% else %}（尚未設定，商戶無法登入）{% endif %}<input type="password" name="password" autocomplete="new-password" minlength="8" placeholder="留空即不修改"></label>
         <label>是否可後台手動代付單{{ yn('allow_manual_withdraw', mc.allow_manual_withdraw) }}</label>
         <label>是否可後台手動代收單{{ yn('allow_manual_receive', mc.allow_manual_receive) }}</label>
+      </fieldset>
+      <fieldset><legend>Telegram 機器人與結算</legend>
+        <label>商戶開啟收款{{ yn('receive_open', mc.receive_open) }}</label>
+        <label>商戶開啟代付{{ yn('withdraw_open', mc.withdraw_open) }}</label>
+        <label>結算銀行代碼<input name="settle_bank_code" value="{{ mc.settle_bank_code }}" maxlength="3" inputmode="numeric"></label>
+        <label>結算帳號<input name="settle_bank_no" value="{{ mc.settle_bank_no }}" maxlength="20" inputmode="numeric"></label>
+        <label>結算戶名<input name="settle_bank_title" value="{{ mc.settle_bank_title }}" maxlength="64"></label>
+        <label>本商戶邀請碼<input value="{{ mc.invite_code or '（商戶第一次查看時產生）' }}" readonly></label>
+        {% set ref = by_id.get(mc.referred_by_id) %}
+        <label>推薦人邀請碼<input name="referrer_code" value="{{ ref.invite_code if ref else '' }}" maxlength="16" placeholder="{{ ref.name if ref else '無' }}"></label>
+        <label>已綁定 Telegram<input value="{{ tg_links.get(mc.id, [])|join('、') or '無' }}" readonly></label>
       </fieldset>
     </div>
     <p class="muted" style="margin:8px 0 0">金額填 0 代表不限制。</p>
