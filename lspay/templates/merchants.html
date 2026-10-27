@@ -1,47 +1,118 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf_field %}
 {% block title %}商戶{% endblock %}
+{% macro yn(name, value) -%}
+<select name="{{ name }}"><option value="1" {{ 'selected' if value }}>是</option><option value="0" {{ 'selected' if not value }}>否</option></select>
+{%- endmacro %}
+{% macro limit(v) %}{{ money(v) if v else '不限' }}{% endmacro %}
+{% macro mark(v) %}{% if v %}<span class="yes">✓</span>{% else %}<span class="no">✗</span>{% endif %}{% endmacro %}
 {% block content %}
 <h1>商戶</h1>
-<p class="muted">商戶是呼叫 LSPay API 的遊戲網站。API 網址：<code>{{ request.base_url }}v1s/</code>，驗證方式與 FuturePay 相同（CLIENTSID、ACCESSTOKEN、sign）。</p>
-<div class="tablewrap"><table>
-<tr><th>Client SID</th><th>名稱</th><th class="num">餘額</th><th class="num">凍結</th><th>收款費率 %</th><th>付款費率 %</th><th>付款固定費</th><th>IP 白名單</th><th>啟用</th><th></th></tr>
-{% for mc in merchants %}
-{% set fid = 'mc-' ~ mc.id %}
+<p class="muted">商戶是呼叫 LSPay API 的遊戲網站。API 網址：<code>{{ request.base_url }}v1s/</code>，驗證方式與 FuturePay 相同（CLIENTSID、ACCESSTOKEN、sign）。筆數與金額只計算已完成的訂單。</p>
+<div class="tablewrap"><table class="merchants">
 <tr>
-  <td>{{ mc.client_sid }}</td>
-  <td><input form="{{ fid }}" name="name" value="{{ mc.name }}" required size="10"></td>
-  <td class="num">{{ mc.balance }}</td><td class="num">{{ mc.balance_frozen }}</td>
-  <td><input form="{{ fid }}" name="receive_fee_rate" value="{{ mc.receive_fee_rate }}" size="5"></td>
-  <td><input form="{{ fid }}" name="withdraw_fee_rate" value="{{ mc.withdraw_fee_rate }}" size="5"></td>
-  <td><input form="{{ fid }}" name="withdraw_fee_fixed" value="{{ mc.withdraw_fee_fixed }}" size="5"></td>
-  <td><input form="{{ fid }}" name="ip_whitelist" value="{{ mc.ip_whitelist }}" placeholder="空白=不限制"></td>
-  <td><input form="{{ fid }}" type="checkbox" name="enabled" value="1" {{ 'checked' if mc.enabled }}></td>
+  <th>商戶</th><th>可代收</th><th>可代付</th>
+  <th class="num">收單筆<br><span class="muted">最高 / 最低</span></th>
+  <th class="num">付單筆<br><span class="muted">最高 / 最低</span></th>
+  <th class="num">收款費率<br><span class="muted">% / 單筆</span></th>
+  <th class="num">付款費率<br><span class="muted">% / 單筆</span></th>
+  <th class="num">商餘</th><th class="num">凍結</th><th class="num">可動用商餘</th>
+  <th class="num">昨日筆數<br><span class="muted">收 / 付</span></th>
+  <th class="num">昨日金額<br><span class="muted">收 / 付</span></th>
+  <th class="num">今日筆數<br><span class="muted">收 / 付</span></th>
+  <th class="num">今日金額<br><span class="muted">收 / 付</span></th>
+  <th></th>
+</tr>
+{% for mc in merchants %}
+{% set st = stats.get(mc.id, {}) %}
+{% set y = st.get('yesterday', {}) %}{% set t = st.get('today', {}) %}
+{% set yr = y.get(m.TYPE_RECEIVE, (0, 0)) %}{% set yw = y.get(m.TYPE_WITHDRAW, (0, 0)) %}
+{% set tr = t.get(m.TYPE_RECEIVE, (0, 0)) %}{% set tw = t.get(m.TYPE_WITHDRAW, (0, 0)) %}
+<tr class="{{ 'off' if not mc.enabled }}">
   <td>
-    <form id="{{ fid }}" class="inline" method="post" action="{{ admin }}/merchants">{{ csrf_field(csrf) }}<input type="hidden" name="merchant_id" value="{{ mc.id }}"><button type="submit">儲存</button></form>
-    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/keys">{{ csrf_field(csrf) }}<button class="sec">查看金鑰</button></form>
-    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/info.txt">{{ csrf_field(csrf) }}<button class="sec">下載 txt</button></form>
-    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/keys" onsubmit="return confirm('更換後舊金鑰立即失效，確定？')">{{ csrf_field(csrf) }}<input type="hidden" name="rotate" value="1"><button class="bad">更換金鑰</button></form>
+    <div><span class="dot" style="background:{{ mc.color or 'transparent' }}"></span><b>{{ mc.client_sid }}</b> {{ mc.name }}
+      {% if not mc.enabled %}<span class="tag bad">停用</span>{% endif %}{% if mc.test_mode %}<span class="tag pending">測試</span>{% endif %}</div>
+    <div class="muted">{{ mc.login_name or '（未設定登入帳號）' }}</div>
   </td>
+  <td class="center">{{ mark(mc.can_receive) }}</td>
+  <td class="center">{{ mark(mc.can_withdraw) }}</td>
+  <td class="num">{{ limit(mc.receive_max) }} / {{ limit(mc.receive_min) }}</td>
+  <td class="num">{{ limit(mc.withdraw_max) }} / {{ limit(mc.withdraw_min) }}</td>
+  <td class="num">{{ mc.receive_fee_rate|float }}% / {{ money(mc.receive_fee_fixed) }}</td>
+  <td class="num">{{ mc.withdraw_fee_rate|float }}% / {{ money(mc.withdraw_fee_fixed) }}</td>
+  <td class="num">{{ money(mc.balance) }}</td>
+  <td class="num">{{ money(mc.balance_frozen) }}</td>
+  <td class="num"><b>{{ money(mc.available_balance) }}</b></td>
+  <td class="num">{{ yr[0] }} / {{ yw[0] }}</td>
+  <td class="num">{{ money(yr[1]) }} / {{ money(yw[1]) }}</td>
+  <td class="num">{{ tr[0] }} / {{ tw[0] }}</td>
+  <td class="num">{{ money(tr[1]) }} / {{ money(tw[1]) }}</td>
+  <td><button type="button" onclick="document.getElementById('set-{{ mc.id }}').showModal()">設定</button></td>
 </tr>
 {% if reveal == mc.id %}
-<tr><td colspan="10" class="wrap" style="background:#fffbeb">
+<tr><td colspan="15" class="wrap" style="background:#fffbeb">
   Client SID：<code>{{ mc.client_sid }}</code>　API Key：<code>{{ mc.api_key }}</code>　Sign Key：<code>{{ mc.sign_key }}</code>
   <span class="muted">（只在此次顯示，請妥善保存）</span>
   <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/info.txt" style="margin-left:8px">{{ csrf_field(csrf) }}<button type="submit">下載商戶資料 txt</button></form>
 </td></tr>
 {% endif %}
-{% else %}<tr><td colspan="10" class="muted">尚無商戶</td></tr>{% endfor %}
+{% else %}<tr><td colspan="15" class="muted">尚無商戶</td></tr>{% endfor %}
 </table></div>
+
+{% for mc in merchants %}
+<dialog class="modal" id="set-{{ mc.id }}">
+  <div class="modal-head"><b>{{ mc.client_sid }} {{ mc.login_name }} {{ mc.name }}</b><button type="button" class="sec" onclick="this.closest('dialog').close()">關閉</button></div>
+  <form method="post" action="{{ admin }}/merchants/{{ mc.id }}/settings" id="setf-{{ mc.id }}">
+    {{ csrf_field(csrf) }}
+    <div class="modal-grid">
+      <fieldset><legend>基本資料</legend>
+        <label>商戶名<input name="name" value="{{ mc.name }}" required maxlength="64"></label>
+        <label>登入帳號（英文）<input name="login_name" value="{{ mc.login_name }}" maxlength="32" pattern="[A-Za-z0-9_.\-]*"></label>
+        <label>商戶有效{{ yn('enabled', mc.enabled) }}</label>
+        <label>測試模式{{ yn('test_mode', mc.test_mode) }}</label>
+        <label>商戶顏色<input type="color" name="color" value="{{ mc.color or '#94a3b8' }}"></label>
+        <label>備註<textarea name="note" rows="2">{{ mc.note }}</textarea></label>
+      </fieldset>
+      <fieldset><legend>代收（收款）</legend>
+        <label>可代收{{ yn('can_receive', mc.can_receive) }}</label>
+        <label>最低收/筆<input name="receive_min" value="{{ mc.receive_min }}" inputmode="decimal"></label>
+        <label>最高收/筆<input name="receive_max" value="{{ mc.receive_max }}" inputmode="decimal"></label>
+        <label>每日最大收量<input name="daily_receive_limit" value="{{ mc.daily_receive_limit }}" inputmode="decimal"></label>
+        <label>收款費率（%）<input name="receive_fee_rate" value="{{ mc.receive_fee_rate }}" inputmode="decimal"></label>
+        <label>收款單筆手續費<input name="receive_fee_fixed" value="{{ mc.receive_fee_fixed }}" inputmode="decimal"></label>
+      </fieldset>
+      <fieldset><legend>代付（付款）</legend>
+        <label>可代付{{ yn('can_withdraw', mc.can_withdraw) }}</label>
+        <label>最低付/筆<input name="withdraw_min" value="{{ mc.withdraw_min }}" inputmode="decimal"></label>
+        <label>最高付/筆<input name="withdraw_max" value="{{ mc.withdraw_max }}" inputmode="decimal"></label>
+        <label>付款費率（%）<input name="withdraw_fee_rate" value="{{ mc.withdraw_fee_rate }}" inputmode="decimal"></label>
+        <label>付款單筆手續費<input name="withdraw_fee_fixed" value="{{ mc.withdraw_fee_fixed }}" inputmode="decimal"></label>
+      </fieldset>
+      <fieldset><legend>風控與通知</legend>
+        <label>代收同時間同姓名能有幾單<input name="same_name_max_orders" value="{{ mc.same_name_max_orders }}" inputmode="numeric"></label>
+        <label>同姓名判定時間（分鐘）<input name="same_name_window_minutes" value="{{ mc.same_name_window_minutes }}" inputmode="numeric"></label>
+        <label>是否返卡資料（否的話只回傳收銀台網址）{{ yn('return_bank_info', mc.return_bank_info) }}</label>
+        <label>代收回傳戶名{{ yn('return_bank_title', mc.return_bank_title) }}</label>
+        <label>飛機群 ID<input name="tg_chat_id" value="{{ mc.tg_chat_id }}" placeholder="-1001234567890"></label>
+        <label>API IP 白名單（一行一個，空白＝不限）<textarea name="ip_whitelist" rows="3">{{ mc.ip_whitelist.replace(',', '\n') }}</textarea></label>
+      </fieldset>
+    </div>
+    <p class="muted" style="margin:8px 0 0">金額填 0 代表不限制。</p>
+  </form>
+  <div class="modal-foot">
+    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/keys">{{ csrf_field(csrf) }}<button class="sec">查看金鑰</button></form>
+    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/info.txt">{{ csrf_field(csrf) }}<button class="sec">下載開通文件 txt</button></form>
+    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/keys" onsubmit="return confirm('更換後舊金鑰立即失效，確定？')">{{ csrf_field(csrf) }}<input type="hidden" name="rotate" value="1"><button class="bad">更換金鑰</button></form>
+    <button type="submit" form="setf-{{ mc.id }}" class="ok">儲存設定</button>
+  </div>
+</dialog>
+{% endfor %}
 
 <h2>新增商戶</h2>
 <form method="post" action="{{ admin }}/merchants" class="filters">
   {{ csrf_field(csrf) }}
   <input name="name" placeholder="商戶名稱" required>
-  <input name="receive_fee_rate" placeholder="收款費率 %" value="0" size="6">
-  <input name="withdraw_fee_rate" placeholder="付款費率 %" value="0" size="6">
-  <input name="withdraw_fee_fixed" placeholder="付款固定費" value="0" size="6">
-  <input name="ip_whitelist" placeholder="IP 白名單（逗號分隔）">
+  <input name="login_name" placeholder="登入帳號（英文）" pattern="[A-Za-z0-9_.\-]*" maxlength="32">
   <button type="submit">新增（自動產生金鑰）</button>
 </form>
 

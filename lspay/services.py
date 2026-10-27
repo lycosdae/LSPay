@@ -12,7 +12,7 @@ from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import models as m
@@ -226,8 +226,6 @@ def _check_duplicate(db: Session, merchant: m.Merchant, order_id: str) -> None:
 
 def pick_receiving_account(db: Session, amount: Decimal) -> Optional[m.ReceivingAccount]:
     """Least recently used enabled company account that is under its daily limit."""
-    from sqlalchemy import func
-
     today = now_tw().replace(hour=0, minute=0, second=0)
     accounts = db.scalars(
         select(m.ReceivingAccount)
@@ -249,6 +247,58 @@ def pick_receiving_account(db: Session, amount: Decimal) -> Optional[m.Receiving
     return None
 
 
+FAILED_STATUSES = {st for st in m.STATUS_LABELS if st >= 90}
+
+
+def check_receive_allowed(db: Session, merchant: m.Merchant, amount: Decimal, payer: str, zh: bool = False) -> None:
+    """Merchant settings that can refuse a new deposit. ``zh`` picks the member-page wording."""
+    if not merchant.can_receive:
+        raise ApiError("此商戶目前暫停儲值" if zh else "Receive Disabled.")
+    if (merchant.receive_min and amount < merchant.receive_min) or (
+        merchant.receive_max and amount > merchant.receive_max
+    ):
+        if zh:
+            low = f"{merchant.receive_min:,.0f}" if merchant.receive_min else "不限"
+            high = f"{merchant.receive_max:,.0f}" if merchant.receive_max else "不限"
+            raise ApiError(f"儲值金額需介於 {low} ～ {high} 元")
+        raise ApiError("amount Out Of Range.")
+    now = now_tw()
+    if merchant.daily_receive_limit:
+        start = now.replace(hour=0, minute=0, second=0)
+        used = db.scalar(
+            select(func.coalesce(func.sum(m.Order.amount), 0)).where(
+                m.Order.merchant_id == merchant.id,
+                m.Order.type == m.TYPE_RECEIVE,
+                m.Order.init_time >= start,
+                m.Order.status.not_in(FAILED_STATUSES),
+            )
+        )
+        if Decimal(used) + amount > merchant.daily_receive_limit:
+            raise ApiError("今日儲值額度已滿，請明日再試" if zh else "Daily Limit Exceeded.")
+    if merchant.same_name_max_orders and payer:
+        since = now - timedelta(minutes=merchant.same_name_window_minutes or 0)
+        count = db.scalar(
+            select(func.count()).where(
+                m.Order.merchant_id == merchant.id,
+                m.Order.type == m.TYPE_RECEIVE,
+                m.Order.payer == payer,
+                m.Order.init_time >= since,
+                m.Order.status.not_in(FAILED_STATUSES),
+            )
+        )
+        if count >= merchant.same_name_max_orders:
+            raise ApiError("您短時間內建立太多儲值單，請稍後再試" if zh else "Too Many Orders.")
+
+
+def check_withdraw_allowed(merchant: m.Merchant, amount: Decimal) -> None:
+    if not merchant.can_withdraw:
+        raise ApiError("Withdraw Disabled.")
+    if (merchant.withdraw_min and amount < merchant.withdraw_min) or (
+        merchant.withdraw_max and amount > merchant.withdraw_max
+    ):
+        raise ApiError("amount Out Of Range.")
+
+
 def create_receive(db: Session, merchant: m.Merchant, data: dict) -> m.Order:
     payer = _require(data, "payer", 15)
     order_id = _require(data, "order_id", 20)
@@ -261,6 +311,7 @@ def create_receive(db: Session, merchant: m.Merchant, data: dict) -> m.Order:
     check = _optional(data, "bank_no_check", 128)
     accounts = parse_bank_no_check(check)
     _check_duplicate(db, merchant, order_id)
+    check_receive_allowed(db, merchant, amount, payer)
 
     member = get_or_create_member(db, merchant, payer, phone, pid)
     if member and member.status != "active":
@@ -279,7 +330,7 @@ def create_receive(db: Session, merchant: m.Merchant, data: dict) -> m.Order:
         payer_cellphone=phone,
         payer_pid=pid,
         amount=amount,
-        fee=calc_fee(amount, merchant.receive_fee_rate),
+        fee=calc_fee(amount, merchant.receive_fee_rate, merchant.receive_fee_fixed),
         callback=callback,
         message=message,
         bank_no_check=",".join(f"{c}-{n}" for c, n in accounts),
@@ -318,6 +369,7 @@ def create_withdraw(db: Session, merchant: m.Merchant, data: dict) -> m.Order:
     phone = _optional(data, "payer_cellphone", 20)
     pid = _optional(data, "payer_pid", 20)
     _check_duplicate(db, merchant, order_id)
+    check_withdraw_allowed(merchant, amount)
 
     member = get_or_create_member(db, merchant, payer, phone, pid)
     if member and member.status != "active":
@@ -574,6 +626,7 @@ def create_member_deposit(db: Session, member: m.Member, amount_text: str) -> m.
     amount = parse_amount(text)
     if not member.bank_accounts:
         raise ApiError("您尚未登記銀行帳戶，請先聯絡客服")
+    check_receive_allowed(db, member.merchant, amount, member.name, zh=True)
     now = now_tw()
     open_count = len(
         db.scalars(
@@ -600,7 +653,7 @@ def create_member_deposit(db: Session, member: m.Member, amount_text: str) -> m.
         payer_cellphone=member.phone,
         payer_pid=member.pid,
         amount=amount,
-        fee=calc_fee(amount, merchant.receive_fee_rate),
+        fee=calc_fee(amount, merchant.receive_fee_rate, merchant.receive_fee_fixed),
         message="LS支付儲值",
         bank_no_check=",".join(f"{a.bank_code}-{a.bank_no}" for a in member.bank_accounts),
         bank_no_check_title=member.name,

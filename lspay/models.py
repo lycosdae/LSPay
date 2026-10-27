@@ -12,6 +12,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
+    text,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -98,6 +101,35 @@ class Merchant(Base):
     ip_whitelist: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_tw)
+
+    # Settings added after the first release. Each has a server default so
+    # db.init_db can add the column to an existing table.
+    login_name: Mapped[str] = mapped_column(String(32), default="", server_default="", index=True)
+    can_receive: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    can_withdraw: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    test_mode: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Per-order limits; 0 = no limit.
+    receive_min: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default=text("0"))
+    receive_max: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default=text("0"))
+    withdraw_min: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default=text("0"))
+    withdraw_max: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default=text("0"))
+    # Max total of deposits created per day; 0 = no limit.
+    daily_receive_limit: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default=text("0"))
+    receive_fee_fixed: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default=text("0"))
+    # Telegram group for this merchant's orders (after the member's team group).
+    tg_chat_id: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    # At most N deposits for the same payer name within the window; 0 = no limit.
+    same_name_max_orders: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    same_name_window_minutes: Mapped[int] = mapped_column(Integer, default=10, server_default=text("10"))
+    # Receive API: include the receiving bank details (else only the cashier URL), and the holder name.
+    return_bank_info: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    return_bank_title: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    color: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    note: Mapped[str] = mapped_column(Text, default="", server_default="")
+
+    @property
+    def available_balance(self) -> Decimal:
+        return self.balance - self.balance_frozen
 
 
 class Team(Base):
