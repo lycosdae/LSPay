@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -260,6 +261,9 @@ class Order(Base):
     events: Mapped[list["OrderEvent"]] = relationship(
         back_populates="order", order_by="OrderEvent.id", cascade="all, delete-orphan"
     )
+    attachments: Mapped[list["OrderAttachment"]] = relationship(
+        back_populates="order", order_by="OrderAttachment.id", cascade="all, delete-orphan"
+    )
 
     @property
     def status_label(self) -> str:
@@ -294,6 +298,21 @@ class OrderEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_tw)
 
     order: Mapped[Order] = relationship(back_populates="events")
+
+
+class OrderAttachment(Base):
+    """A transfer screenshot the player uploaded from the cashier page."""
+
+    __tablename__ = "order_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), index=True)
+    content_type: Mapped[str] = mapped_column(String(32))
+    size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_tw)
+
+    order: Mapped[Order] = relationship(back_populates="attachments")
 
 
 class TelegramMessage(Base):

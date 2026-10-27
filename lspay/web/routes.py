@@ -7,14 +7,15 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from .. import callbacks, services, telegram
 from .. import models as m
+from ..banks import bank_name
 from ..config import settings
 from ..db import get_db
 from ..timeutil import fmt, now_tw, parse
@@ -35,6 +36,7 @@ templates = Jinja2Templates(directory=str(pathlib.Path(__file__).resolve().paren
 templates.env.globals.update(
     fmt=fmt,
     m=m,
+    bank_name=bank_name,
     STATUS_LABELS=m.STATUS_LABELS,
     ROLE_LABELS=m.ROLE_LABELS,
 )
@@ -437,6 +439,16 @@ def member_create(
     return redirect(f"/members/{member.id}", "✅ 會員已建立", request)
 
 
+@router.get("/order/{sid}/proof/{aid}")
+def order_proof(sid: str, aid: int, user=Depends(current_user), db: Session = Depends(get_db)):
+    order = get_order(db, sid)
+    att = db.get(m.OrderAttachment, aid)
+    if att is None or att.order_id != order.id:
+        raise HTTPException(404)
+    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"}
+    return Response(att.data, media_type=att.content_type, headers=headers)
+
+
 @router.get("/members/{mid}", response_class=HTMLResponse)
 def member_detail(request: Request, mid: int, user=Depends(current_user), db: Session = Depends(get_db)):
     member = db.get(m.Member, mid)
@@ -449,6 +461,7 @@ def member_detail(request: Request, mid: int, user=Depends(current_user), db: Se
         user,
         mb=member,
         orders=orders,
+        pay_url=member_pay_url(member),
         teams=db.scalars(select(m.Team).order_by(m.Team.id)).all(),
     )
 
@@ -850,9 +863,100 @@ def account_save(
 # --------------------------------------------------------------------------
 
 
-@public_router.get("/cashier/{sid}", response_class=HTMLResponse)
-def cashier(request: Request, sid: str, t: str = "", db: Session = Depends(get_db)):
+def member_pay_url(member: m.Member) -> str:
+    token = services.member_pay_token(member)
+    return f"{settings.base_url}/pay/{token}" if token else ""
+
+
+def payer_accounts(order: m.Order) -> list[tuple[str, str]]:
+    """The accounts the player may transfer from: declared on the order, then registered."""
+    out = services.parse_bank_no_check(order.bank_no_check) if order.bank_no_check else []
+    if order.member:
+        for a in order.member.bank_accounts:
+            if not any(services.same_account(a.bank_code, a.bank_no, c, n) for c, n in out):
+                out.append((a.bank_code, a.bank_no))
+    return out
+
+
+def cashier_order(db: Session, sid: str, t: str) -> m.Order:
     order = db.scalar(select(m.Order).where(m.Order.order_sid == sid, m.Order.type == m.TYPE_RECEIVE))
     if order is None or not t or not secrets.compare_digest(t, order.cashier_token):
         raise HTTPException(404)
-    return templates.TemplateResponse(request, "cashier.html", {"o": order})
+    return order
+
+
+def render_cashier(request: Request, order: m.Order, error: str = "", uploaded: bool = False, status_code: int = 200):
+    ctx = {
+        "o": order,
+        "accounts": payer_accounts(order),
+        "can_upload": services.can_upload_proof(order),
+        "uploaded": uploaded or bool(order.attachments),
+        "error": error,
+        "remaining": max(0, int((order.end_time - now_tw()).total_seconds())) if order.end_time else 0,
+    }
+    return templates.TemplateResponse(request, "cashier.html", ctx, status_code=status_code)
+
+
+@public_router.get("/cashier/{sid}", response_class=HTMLResponse)
+def cashier(request: Request, sid: str, t: str = "", db: Session = Depends(get_db)):
+    return render_cashier(request, cashier_order(db, sid, t))
+
+
+@public_router.post("/cashier/{sid}/proof", response_class=HTMLResponse)
+async def cashier_proof(
+    request: Request,
+    sid: str,
+    tasks: BackgroundTasks,
+    t: str = Form(""),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    order = cashier_order(db, sid, t)
+    data = await file.read(services.MAX_PROOF_BYTES + 1)
+    try:
+        services.add_proof(db, order, data)
+        db.commit()
+    except services.ApiError as exc:
+        db.rollback()
+        return render_cashier(request, order, error=exc.msg, status_code=400)
+    tasks.add_task(telegram.notify_safe, order.id)
+    return RedirectResponse(f"/cashier/{order.order_sid}?t={order.cashier_token}", status_code=303)
+
+
+# --------------------------------------------------------------------------
+# LS支付 member deposit page (personal link per member)
+# --------------------------------------------------------------------------
+
+
+def pay_member(db: Session, token: str) -> m.Member:
+    member = services.member_from_pay_token(db, token)
+    if member is None:
+        raise HTTPException(404)
+    return member
+
+
+@public_router.get("/pay/{token}", response_class=HTMLResponse)
+def pay_page(request: Request, token: str, db: Session = Depends(get_db)):
+    member = pay_member(db, token)
+    ctx = {"mb": member, "error": "", "amount": "", "timeout": settings.member_deposit_timeout_minutes}
+    return templates.TemplateResponse(request, "pay.html", ctx)
+
+
+@public_router.post("/pay/{token}", response_class=HTMLResponse)
+def pay_create(
+    request: Request,
+    token: str,
+    tasks: BackgroundTasks,
+    amount: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    member = pay_member(db, token)
+    try:
+        order = services.create_member_deposit(db, member, amount)
+        db.commit()
+    except services.ApiError as exc:
+        db.rollback()
+        ctx = {"mb": member, "error": exc.msg, "amount": amount, "timeout": settings.member_deposit_timeout_minutes}
+        return templates.TemplateResponse(request, "pay.html", ctx, status_code=400)
+    tasks.add_task(telegram.notify_safe, order.id)
+    return RedirectResponse(f"/cashier/{order.order_sid}?t={order.cashier_token}", status_code=303)

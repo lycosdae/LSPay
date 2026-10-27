@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>LS支付 銀行轉帳</title><link rel="stylesheet" href="/static/pay.css"></head>
+<body>
+<div class="pay">
+  <div class="pay-head"><div class="logo">LS</div><h1>LS支付 銀行轉帳<small>線上儲值</small></h1></div>
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  <form class="box" method="post" onsubmit="this.querySelector('button[type=submit]').disabled=true">
+    <h2>會員：{{ mb.name }}</h2>
+    <label for="amount" class="muted">儲值金額（新台幣）</label>
+    <input class="amt" id="amount" name="amount" inputmode="numeric" pattern="[0-9]*" required value="{{ amount }}" placeholder="請輸入金額">
+    <div class="quick">
+      {% for v in (500, 1000, 3000, 5000, 10000) %}<button type="button" onclick="document.getElementById('amount').value='{{ v }}'">{{ '{:,}'.format(v) }}</button>{% endfor %}
+    </div>
+    <button class="btn" type="submit">建立儲值單</button>
+  </form>
+  <p class="foot">建立後請於 {{ timeout }} 分鐘內完成轉帳</p>
+</div>
+</body>
+</html>
