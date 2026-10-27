@@ -105,6 +105,7 @@ echo " LSPay 已啟動"
 # shellcheck disable=SC2153  # ADMIN_PATH comes from .env
 echo " 後台網址：${BASE_URL}/${ADMIN_PATH}/"
 echo " 商戶 API：${BASE_URL}/v1s/"
+echo " 商戶後台：${BASE_URL}/merchant"
 if [[ -n "$ADMIN_PASS" ]]; then
   echo " 管理員帳號：${ADMIN_USER}"
   echo " 管理員密碼：${ADMIN_PASS}"

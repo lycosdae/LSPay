@@ -1,0 +1,25 @@
+{% extends "merchant/base.html" %}
+{% block title %}訂單已建立{% endblock %}
+{% block content %}
+<h1>✅ {{ o.type_label }}訂單已建立</h1>
+<div class="card" style="max-width:640px">
+<dl class="kv">
+  <dt>系統單號</dt><dd>{{ o.order_sid }}</dd>
+  <dt>商戶單號</dt><dd>{{ o.order_id }}</dd>
+  <dt>玩家</dt><dd>{{ o.payer }}</dd>
+  <dt>金額 / 手續費</dt><dd>{{ money(o.amount) }} / {{ money(o.fee) }}</dd>
+  {% if o.type == m.TYPE_WITHDRAW %}
+  <dt>收款人</dt><dd>{{ o.bank_title }}　{{ o.bank_name }}　<code>{{ o.bank_no }}</code></dd>
+  <dt>狀態</dt><dd>{{ o.status_label }}／待審核（已凍結 {{ money(o.amount + o.fee) }}）</dd>
+  {% else %}
+  {% if o.receiving_account_id %}
+  <dt>收款帳戶</dt><dd>{{ o.bank_code }} {{ o.bank_name }}　{{ o.bank_title }}　<code>{{ o.bank_no }}</code></dd>
+  {% else %}<dt>收款帳戶</dt><dd class="warn">目前沒有可用的收款帳戶</dd>{% endif %}
+  <dt>付款期限</dt><dd>{{ fmt(o.end_time) }}</dd>
+  <dt>收銀台網址</dt><dd class="wrap"><a href="{{ cashier }}" target="_blank">{{ cashier }}</a></dd>
+  {% endif %}
+</dl>
+</div>
+<p><a href="{{ mp }}/orders/{{ 'withdraw' if o.type == m.TYPE_WITHDRAW else 'receive' }}">回到訂單列表</a>　
+<a href="{{ mp }}/{{ 'withdraw' if o.type == m.TYPE_WITHDRAW else 'receive' }}/new">再建立一筆</a></p>
+{% endblock %}

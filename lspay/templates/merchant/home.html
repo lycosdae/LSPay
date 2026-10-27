@@ -1,0 +1,24 @@
+{% extends "merchant/base.html" %}
+{% block title %}商戶資訊{% endblock %}
+{% block content %}
+<h1>商戶資訊</h1>
+{% set t = stats.today %}{% set y = stats.yesterday %}
+<div class="grid">
+  <div class="card stat"><div class="l">商餘</div><div class="n">{{ money(mc.balance) }}</div></div>
+  <div class="card stat"><div class="l">凍結</div><div class="n">{{ money(mc.balance_frozen) }}</div></div>
+  <div class="card stat"><div class="l">可動用商餘</div><div class="n">{{ money(mc.available_balance) }}</div></div>
+  <div class="card stat"><div class="l">今日收款（筆 / 金額）</div><div class="n">{{ t.get(m.TYPE_RECEIVE, (0, 0))[0] }} / {{ money(t.get(m.TYPE_RECEIVE, (0, 0))[1]) }}</div></div>
+  <div class="card stat"><div class="l">今日付款（筆 / 金額）</div><div class="n">{{ t.get(m.TYPE_WITHDRAW, (0, 0))[0] }} / {{ money(t.get(m.TYPE_WITHDRAW, (0, 0))[1]) }}</div></div>
+  <div class="card stat"><div class="l">昨日收款 / 付款金額</div><div class="n">{{ money(y.get(m.TYPE_RECEIVE, (0, 0))[1]) }} / {{ money(y.get(m.TYPE_WITHDRAW, (0, 0))[1]) }}</div></div>
+</div>
+<div class="card">
+<dl class="kv">
+  <dt>商戶</dt><dd>{{ mc.client_sid }} {{ mc.name }}（{{ mc.login_name }}）</dd>
+  <dt>API URL</dt><dd><code>{{ api_url }}</code></dd>
+  <dt>收款費率</dt><dd>{{ mc.receive_fee_rate|float }}% + 每筆 {{ money(mc.receive_fee_fixed) }}</dd>
+  <dt>付款費率</dt><dd>{{ mc.withdraw_fee_rate|float }}% + 每筆 {{ money(mc.withdraw_fee_fixed) }}</dd>
+  <dt>收單筆</dt><dd>{{ money(mc.receive_min) if mc.receive_min else '不限' }} ～ {{ money(mc.receive_max) if mc.receive_max else '不限' }}</dd>
+  <dt>付單筆</dt><dd>{{ money(mc.withdraw_min) if mc.withdraw_min else '不限' }} ～ {{ money(mc.withdraw_max) if mc.withdraw_max else '不限' }}</dd>
+</dl>
+</div>
+{% endblock %}

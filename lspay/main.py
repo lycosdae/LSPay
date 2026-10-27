@@ -16,6 +16,8 @@ from . import callbacks, db, services, telegram
 from .api.merchant import router as merchant_router
 from .config import settings
 from .web.auth import LoginRequired
+from .web.merchant_portal import MerchantLoginRequired
+from .web.merchant_portal import router as merchant_portal_router
 from .web.routes import public_router
 from .web.routes import router as web_router
 
@@ -56,6 +58,8 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     if not re.fullmatch(r"/[A-Za-z0-9_-]+", settings.admin_path):
         raise RuntimeError("ADMIN_PATH may only contain letters, digits, '-' and '_'")
+    if not re.fullmatch(r"/[A-Za-z0-9_-]+", settings.merchant_path) or settings.merchant_path == settings.admin_path:
+        raise RuntimeError("MERCHANT_PATH must be letters, digits, '-' or '_' and differ from ADMIN_PATH")
     if settings.admin_path == "/admin":
         log.warning("ADMIN_PATH is not set; the admin web is at the guessable /admin")
     if not settings.session_secret:
@@ -75,10 +79,15 @@ def create_app() -> FastAPI:
     app.include_router(merchant_router)
     app.include_router(web_router)
     app.include_router(public_router)
+    app.include_router(merchant_portal_router)
 
     @app.exception_handler(LoginRequired)
     async def _login_required(request: Request, exc: LoginRequired):
         return RedirectResponse(settings.admin_path + "/login", status_code=303)
+
+    @app.exception_handler(MerchantLoginRequired)
+    async def _merchant_login_required(request: Request, exc: MerchantLoginRequired):
+        return RedirectResponse(settings.merchant_path + "/login", status_code=303)
 
     @app.middleware("http")
     async def _no_index(request: Request, call_next):

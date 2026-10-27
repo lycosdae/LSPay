@@ -125,6 +125,10 @@ class Merchant(Base):
     return_bank_info: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     return_bank_title: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     color: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    # Merchant backend: login with login_name + password; manual order pages are opt-in.
+    password_hash: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    allow_manual_withdraw: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    allow_manual_receive: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     note: Mapped[str] = mapped_column(Text, default="", server_default="")
 
     @property

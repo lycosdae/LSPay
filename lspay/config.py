@@ -23,6 +23,8 @@ class Settings:
     env_name: str = field(default_factory=lambda: os.getenv("LSPAY_ENV_NAME", "").strip())
     # Public IPs merchant callbacks come from, comma separated (for merchants' whitelists).
     callback_ips: str = field(default_factory=lambda: os.getenv("CALLBACK_IPS", ""))
+    # URL prefix of the merchant backend (merchants log in with their login name).
+    merchant_path: str = field(default_factory=lambda: "/" + os.getenv("MERCHANT_PATH", "merchant").strip().strip("/"))
     session_secret: str = field(default_factory=lambda: os.getenv("SESSION_SECRET", ""))
     cookie_secure: bool = field(default_factory=lambda: _bool("COOKIE_SECURE", False))
 

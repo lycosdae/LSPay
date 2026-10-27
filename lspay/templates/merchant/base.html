@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{% block title %}商戶後台{% endblock %} · LSPay</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="merchant-side">
+<div class="layout">
+<nav class="side">
+  <div class="brand">LSPay 商戶後台</div>
+  {% set p = request.url.path[mp|length:] %}
+  <a href="{{ mp }}" class="{{ 'on' if p == '' }}">商戶資訊</a>
+  <div class="sec">訂單資料</div>
+  <a href="{{ mp }}/orders/receive" class="{{ 'on' if p == '/orders/receive' }}">收款訂單列表</a>
+  <a href="{{ mp }}/orders/withdraw" class="{{ 'on' if p == '/orders/withdraw' }}">付款訂單列表</a>
+  {% if mc.allow_manual_withdraw %}<a href="{{ mp }}/withdraw/new" class="{{ 'on' if p == '/withdraw/new' }}">手動建立付款訂單</a>{% endif %}
+  {% if mc.allow_manual_receive %}<a href="{{ mp }}/receive/new" class="{{ 'on' if p == '/receive/new' }}">手動建立代收訂單</a>{% endif %}
+  <form method="post" action="{{ mp }}/logout">
+    <div class="muted" style="margin-bottom:6px">{{ mc.client_sid }} {{ mc.login_name }}</div>
+    <button class="sec" type="submit">登出</button>
+  </form>
+</nav>
+<main>
+  {% block content %}{% endblock %}
+</main>
+</div>
+</body>
+</html>

@@ -96,6 +96,12 @@
         <label>飛機群 ID<input name="tg_chat_id" value="{{ mc.tg_chat_id }}" placeholder="-1001234567890"></label>
         <label>API IP 白名單（一行一個，空白＝不限）<textarea name="ip_whitelist" rows="3">{{ mc.ip_whitelist.replace(',', '\n') }}</textarea></label>
       </fieldset>
+      <fieldset><legend>商戶後台</legend>
+        <label>後台網址<input value="{{ merchant_url }}" readonly></label>
+        <label>密碼{% if mc.password_hash %}（已設定）{% else %}（尚未設定，商戶無法登入）{% endif %}<input type="password" name="password" autocomplete="new-password" minlength="8" placeholder="留空即不修改"></label>
+        <label>是否可後台手動代付單{{ yn('allow_manual_withdraw', mc.allow_manual_withdraw) }}</label>
+        <label>是否可後台手動代收單{{ yn('allow_manual_receive', mc.allow_manual_receive) }}</label>
+      </fieldset>
     </div>
     <p class="muted" style="margin:8px 0 0">金額填 0 代表不限制。</p>
   </form>
