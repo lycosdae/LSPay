@@ -44,6 +44,19 @@ DATABASE_URL=sqlite:///./demo.db SESSION_SECRET=dev uvicorn lspay.main:app --rel
 pytest
 ```
 
+## 一鍵安裝（Ubuntu 主機）
+
+在全新的 Ubuntu 22.04 / 24.04 主機上，用 root 執行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lycosdae/LSPay/main/deploy/install.sh | bash -s -- pay.example.com
+```
+
+- 後面的網域要先指到這台主機的 IP，系統會自動申請 HTTPS 憑證。測試時可以不帶網域，改用 `http://主機IP` 開啟（僅限測試）。
+- 腳本會安裝 Docker、開防火牆（只開放 22、80、443）、隨機產生 `.env`（資料庫密碼、`ADMIN_PATH`、`SESSION_SECRET`），建立管理員帳號 `admin`，最後印出後台網址和密碼。
+- 再執行一次就是更新：會拉最新程式並重建，保留 `.env`、資料庫和既有帳號。
+- 程式裝在 `/opt/lspay`，設定檔是 `/opt/lspay/.env`。
+
 ## 正式部署
 
 1. 執行 `cp .env.example .env`，填入資料庫密碼、`BASE_URL`、`SESSION_SECRET`、`ADMIN_PATH`，以及要用的 Telegram 設定。
