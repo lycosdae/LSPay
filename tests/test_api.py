@@ -1,4 +1,5 @@
 import json
+import re
 from decimal import Decimal
 
 import httpx
@@ -45,7 +46,7 @@ def test_receive_returns_company_account(client, merchant, account):
     assert d["order_id"] == "r1"
     assert d["bank_no"] == "123456789012"
     assert d["bank_title"] == "LS公司"
-    assert d["amount"] == "1000.00"
+    assert d["amount"] == 1000
     assert "/cashier/" in d["fronttable_url"]
 
 
@@ -250,3 +251,42 @@ def test_cashier_page(client, merchant, account, session):
     page = client.get(path)
     assert page.status_code == 200 and "123456789012" in page.text
     assert client.get(path.split("?")[0] + "?t=wrong").status_code == 404
+
+
+def test_receive_matches_manual_example(client, session, account):
+    """Send the request from the FuturePay manual (section 三) and check the reply has its shape."""
+    session.add(m.Merchant(name="doc", client_sid="0000", api_key="1234567890abcdefg", sign_key="k"))
+    session.commit()
+    body = {
+        "payer": "玩家",
+        "bank_no_check": "822-9999999999,004-8888888888",
+        "bank_no_check_title": "玩家",
+        "payer_cellphone": "0987654322",
+        "payer_pid": "L123456789",
+        "order_id": "a10013",
+        "amount": 100,
+        "callback": "https://test.callback.url",
+        "message": "test order",
+    }
+    headers = {"CLIENTSID": "0000", "ACCESSTOKEN": "1234567890abcdefg", "Content-Type": "application/json"}
+    res = client.post("/v1s/order/receive", json=signed(body, "k"), headers=headers).json()
+    assert res["code"] == 200
+    d = res["data"]
+    assert set(d) == {
+        "order_sid",
+        "order_id",
+        "bank_code",
+        "bank_title",
+        "bank_name",
+        "bank_no",
+        "amount",
+        "init_time",
+        "fronttable_url",
+    }
+    assert d["order_id"] == "a10013" and d["amount"] == 100
+    assert d["order_sid"].isdigit() and len(d["order_sid"]) == 15
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", d["init_time"])
+    dup = client.post("/v1s/order/receive", json=signed(body, "k"), headers=headers).json()
+    assert dup == {"data": {"order_id": "a10013"}, "code": 400, "msg": "Duplicate order_id."}
+    missing = client.post("/v1s/order/receive", json=signed({**body, "order_id": ""}, "k"), headers=headers).json()
+    assert missing == {"code": 400, "msg": "order_id Empty."}

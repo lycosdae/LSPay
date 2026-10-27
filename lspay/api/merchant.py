@@ -184,5 +184,10 @@ def cashier_url(request: Request, order: m.Order) -> str:
     return f"{settings.base_url}/cashier/{order.order_sid}?t={order.cashier_token}"
 
 
+def json_amount(value: Decimal):
+    """Amounts in order responses are JSON numbers, as in the FuturePay examples (100, 100.5)."""
+    return int(value) if value == value.to_integral_value() else float(value)
+
+
 def jsonable(data: dict) -> dict:
-    return {k: (str(v) if isinstance(v, Decimal) else v) for k, v in data.items()}
+    return {k: (json_amount(v) if isinstance(v, Decimal) else v) for k, v in data.items()}
