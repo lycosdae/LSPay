@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import mask, pager, csrf_field %}
+{% block title %}會員列表{% endblock %}
+{% block content %}
+<h1>會員列表</h1>
+<details class="card">
+  <summary><b>建立會員</b></summary>
+  <form method="post" action="{{ admin }}/members" class="form-grid" style="margin-top:12px">
+    {{ csrf_field(csrf) }}
+    <label>商戶<select name="merchant_id" required>{% for mc in merchants %}<option value="{{ mc.id }}">{{ mc.name }}</option>{% endfor %}</select></label>
+    <label>姓名（實名）<input name="name" required maxlength="15"></label>
+    <label>身分證號<input name="pid" required maxlength="20"></label>
+    <label>電話<input name="phone" maxlength="20"></label>
+    <label>車隊<select name="team_id"><option value="">—</option>{% for t in teams %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></label>
+    <label>銀行代碼<input name="bank_code" maxlength="3" placeholder="822"></label>
+    <label>銀行帳號<input name="bank_no"></label>
+    <label>備註<input name="note"></label>
+    <div><button type="submit">建立</button></div>
+  </form>
+</details>
+<form class="filters" method="get">
+  <input name="q" value="{{ f.q }}" placeholder="姓名 / 電話 / 身分證">
+  <select name="merchant_id"><option value="">全部商戶</option>{% for mc in merchants %}<option value="{{ mc.id }}" {{ 'selected' if f.merchant_id == mc.id|string }}>{{ mc.name }}</option>{% endfor %}</select>
+  <select name="team_id"><option value="">全部車隊</option>{% for t in teams %}<option value="{{ t.id }}" {{ 'selected' if f.team_id == t.id|string }}>{{ t.name }}</option>{% endfor %}</select>
+  <button type="submit">查詢</button><span class="muted">共 {{ total }} 位</span>
+</form>
+<div class="tablewrap"><table>
+<tr><th>ID</th><th>姓名</th><th>商戶</th><th>電話</th><th>身分證</th><th>銀行帳戶</th><th>車隊</th><th>狀態</th><th>建立時間</th></tr>
+{% for mb in rows %}
+<tr>
+  <td>{{ mb.id }}</td><td><a href="{{ admin }}/members/{{ mb.id }}">{{ mb.name }}</a></td><td>{{ mb.merchant.name }}</td>
+  <td>{{ mb.phone }}</td><td>{{ mask(mb.pid) }}</td>
+  <td>{{ mb.bank_accounts|length }} 個</td><td>{{ mb.team.name if mb.team else '' }}</td>
+  <td>{% if mb.status == 'active' %}<span class="tag s3">正常</span>{% else %}<span class="tag bad">停用</span>{% endif %}</td>
+  <td>{{ fmt(mb.created_at) }}</td>
+</tr>
+{% else %}<tr><td colspan="9" class="muted">沒有資料</td></tr>{% endfor %}
+</table></div>
+{{ pager(page, pages, 'q=' ~ f.q|urlencode ~ '&merchant_id=' ~ f.merchant_id ~ '&team_id=' ~ f.team_id) }}
+{% endblock %}

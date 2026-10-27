@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}車隊跑單{% endblock %}
+{% block content %}
+<h1>車隊跑單</h1>
+<form class="filters" method="get">
+  完成日期 <input type="date" name="date_from" value="{{ f.date_from }}"> ~ <input type="date" name="date_to" value="{{ f.date_to }}">
+  <button type="submit">查詢</button>
+</form>
+{% macro stats_table(rows, label_fn, head) %}
+<div class="tablewrap"><table>
+<tr><th>{{ head }}</th><th class="num">處理單數</th><th class="num">收款完成</th><th class="num">收款金額</th><th class="num">付款完成</th><th class="num">付款金額</th><th class="num">駁回</th></tr>
+{% for r in rows %}
+<tr><td>{{ label_fn(r[0]) }}</td><td class="num">{{ r[1] }}</td><td class="num">{{ r[2] }}</td><td class="num">{{ r[3] }}</td><td class="num">{{ r[4] }}</td><td class="num">{{ r[5] }}</td><td class="num">{{ r[6] }}</td></tr>
+{% else %}<tr><td colspan="7" class="muted">此期間沒有處理紀錄</td></tr>{% endfor %}
+</table></div>
+{% endmacro %}
+{% macro team_name(tid) %}{{ teams[tid].name if tid in teams else '（未分隊）' }}{% endmacro %}
+{% macro user_name(uid) %}{{ users[uid].label if uid in users else '' }}{% endmacro %}
+<h2>依車隊</h2>
+{{ stats_table(team_rows, team_name, '車隊') }}
+<h2>依審單人員</h2>
+{{ stats_table(user_rows, user_name, '人員') }}
+{% endblock %}

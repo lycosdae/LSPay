@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block title %}商戶{% endblock %}
+{% block content %}
+<h1>商戶</h1>
+<p class="muted">商戶是呼叫 LSPay API 的遊戲網站。API 網址：<code>{{ request.base_url }}v1s/</code>，驗證方式與 FuturePay 相同（CLIENTSID、ACCESSTOKEN、sign）。</p>
+<div class="tablewrap"><table>
+<tr><th>Client SID</th><th>名稱</th><th class="num">餘額</th><th class="num">凍結</th><th>收款費率 %</th><th>付款費率 %</th><th>付款固定費</th><th>IP 白名單</th><th>啟用</th><th></th></tr>
+{% for mc in merchants %}
+{% set fid = 'mc-' ~ mc.id %}
+<tr>
+  <td>{{ mc.client_sid }}</td>
+  <td><input form="{{ fid }}" name="name" value="{{ mc.name }}" required size="10"></td>
+  <td class="num">{{ mc.balance }}</td><td class="num">{{ mc.balance_frozen }}</td>
+  <td><input form="{{ fid }}" name="receive_fee_rate" value="{{ mc.receive_fee_rate }}" size="5"></td>
+  <td><input form="{{ fid }}" name="withdraw_fee_rate" value="{{ mc.withdraw_fee_rate }}" size="5"></td>
+  <td><input form="{{ fid }}" name="withdraw_fee_fixed" value="{{ mc.withdraw_fee_fixed }}" size="5"></td>
+  <td><input form="{{ fid }}" name="ip_whitelist" value="{{ mc.ip_whitelist }}" placeholder="空白=不限制"></td>
+  <td><input form="{{ fid }}" type="checkbox" name="enabled" value="1" {{ 'checked' if mc.enabled }}></td>
+  <td>
+    <form id="{{ fid }}" class="inline" method="post" action="{{ admin }}/merchants">{{ csrf_field(csrf) }}<input type="hidden" name="merchant_id" value="{{ mc.id }}"><button type="submit">儲存</button></form>
+    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/keys">{{ csrf_field(csrf) }}<button class="sec">查看金鑰</button></form>
+    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/keys" onsubmit="return confirm('更換後舊金鑰立即失效，確定？')">{{ csrf_field(csrf) }}<input type="hidden" name="rotate" value="1"><button class="bad">更換金鑰</button></form>
+  </td>
+</tr>
+{% if reveal == mc.id %}
+<tr><td colspan="10" class="wrap" style="background:#fffbeb">
+  Client SID：<code>{{ mc.client_sid }}</code>　API Key：<code>{{ mc.api_key }}</code>　Sign Key：<code>{{ mc.sign_key }}</code>
+  <span class="muted">（只在此次顯示，請妥善保存）</span>
+</td></tr>
+{% endif %}
+{% else %}<tr><td colspan="10" class="muted">尚無商戶</td></tr>{% endfor %}
+</table></div>
+
+<h2>新增商戶</h2>
+<form method="post" action="{{ admin }}/merchants" class="filters">
+  {{ csrf_field(csrf) }}
+  <input name="name" placeholder="商戶名稱" required>
+  <input name="receive_fee_rate" placeholder="收款費率 %" value="0" size="6">
+  <input name="withdraw_fee_rate" placeholder="付款費率 %" value="0" size="6">
+  <input name="withdraw_fee_fixed" placeholder="付款固定費" value="0" size="6">
+  <input name="ip_whitelist" placeholder="IP 白名單（逗號分隔）">
+  <button type="submit">新增（自動產生金鑰）</button>
+</form>
+
+<h2>調整餘額</h2>
+<p class="muted">用於商戶結算、儲值或修正。正數為加，負數為減，會寫入操作日誌。</p>
+<form method="post" id="bal" class="filters" onsubmit="this.action='{{ admin }}/merchants/'+this.mid.value+'/balance'">
+  {{ csrf_field(csrf) }}
+  <select name="mid">{% for mc in merchants %}<option value="{{ mc.id }}">{{ mc.name }}</option>{% endfor %}</select>
+  <input name="delta" placeholder="金額，如 10000 或 -500" required>
+  <input name="note" placeholder="原因" required>
+  <button type="submit">調整</button>
+</form>
+{% endblock %}

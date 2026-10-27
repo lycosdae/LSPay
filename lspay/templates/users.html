@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf_field %}
+{% block title %}用戶資料{% endblock %}
+{% block content %}
+<h1>用戶資料</h1>
+<div class="card">
+  <h2 style="margin-top:0">我的資料</h2>
+  <dl class="kv">
+    <dt>帳號</dt><dd>{{ user.username }}</dd>
+    <dt>角色</dt><dd>{{ ROLE_LABELS[user.role] }}</dd>
+    <dt>車隊</dt><dd>{{ user.team.name if user.team else '—' }}</dd>
+    <dt>Telegram ID</dt><dd>{{ user.tg_user_id or '未綁定' }}</dd>
+    <dt>上次登入</dt><dd>{{ fmt(user.last_login_at) or '' }}</dd>
+  </dl>
+  <form method="post" action="{{ admin }}/profile/password" class="filters" style="margin-top:12px">
+    {{ csrf_field(csrf) }}
+    <input type="password" name="old_password" placeholder="舊密碼" required autocomplete="current-password">
+    <input type="password" name="new_password" placeholder="新密碼（至少 8 碼）" required minlength="8" autocomplete="new-password">
+    <button type="submit">修改密碼</button>
+  </form>
+</div>
+
+<h2>後台用戶</h2>
+<p class="muted">Telegram ID 是數字 ID（可對 @userinfobot 傳訊息取得）。綁定後，審單員可在群組直接按鈕審核。</p>
+<div class="tablewrap"><table>
+<tr><th>帳號</th><th>名稱</th><th>角色</th><th>車隊</th><th>Telegram ID</th><th>重設密碼</th><th>啟用</th><th>上次登入</th>{% if user.role == 'admin' %}<th></th>{% endif %}</tr>
+{% for u in users %}
+<tr>
+{% if user.role == 'admin' %}
+  {% set fid = 'user-' ~ u.id %}
+  <td>{{ u.username }}</td>
+  <td><input form="{{ fid }}" name="display_name" value="{{ u.display_name }}" size="8"></td>
+  <td><select form="{{ fid }}" name="role">{% for k, v in ROLE_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if u.role == k }}>{{ v }}</option>{% endfor %}</select></td>
+  <td><select form="{{ fid }}" name="team_id"><option value="">—</option>{% for t in teams %}<option value="{{ t.id }}" {{ 'selected' if u.team_id == t.id }}>{{ t.name }}</option>{% endfor %}</select></td>
+  <td><input form="{{ fid }}" name="tg_user_id" value="{{ u.tg_user_id }}" size="12"></td>
+  <td><input form="{{ fid }}" type="password" name="password" placeholder="不改請留空" size="10" autocomplete="new-password"></td>
+  <td><input form="{{ fid }}" type="checkbox" name="enabled" value="1" {{ 'checked' if u.enabled }}></td>
+  <td>{{ fmt(u.last_login_at) or '' }}</td>
+  <td><form id="{{ fid }}" method="post" action="{{ admin }}/users">{{ csrf_field(csrf) }}<input type="hidden" name="user_id" value="{{ u.id }}"><button type="submit">儲存</button></form></td>
+{% else %}
+  <td>{{ u.username }}</td><td>{{ u.display_name }}</td><td>{{ ROLE_LABELS[u.role] }}</td><td>{{ u.team.name if u.team else '' }}</td>
+  <td>{{ '已綁定' if u.tg_user_id else '' }}</td><td></td><td>{{ '是' if u.enabled else '否' }}</td><td>{{ fmt(u.last_login_at) or '' }}</td>
+{% endif %}
+</tr>
+{% endfor %}
+</table></div>
+{% if user.role == 'admin' %}
+<h2>新增用戶</h2>
+<form method="post" action="{{ admin }}/users" class="filters">
+  {{ csrf_field(csrf) }}
+  <input name="username" placeholder="帳號" required>
+  <input name="display_name" placeholder="名稱">
+  <input type="password" name="password" placeholder="密碼（至少 8 碼）" required minlength="8" autocomplete="new-password">
+  <select name="role">{% for k, v in ROLE_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if k == 'reviewer' }}>{{ v }}</option>{% endfor %}</select>
+  <select name="team_id"><option value="">車隊 —</option>{% for t in teams %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select>
+  <input name="tg_user_id" placeholder="Telegram ID">
+  <button type="submit">新增</button>
+</form>
+<h2>操作日誌</h2>
+<div class="tablewrap"><table>
+<tr><th>時間</th><th>操作人</th><th>動作</th><th>內容</th></tr>
+{% for l in logs %}<tr><td>{{ fmt(l.created_at) }}</td><td>{{ l.actor }}</td><td>{{ l.action }}</td><td class="wrap">{{ l.detail }}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+{% endblock %}
