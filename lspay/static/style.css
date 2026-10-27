@@ -69,8 +69,16 @@ dialog.modal>form{padding:14px 16px}
 .modal-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
 .modal-grid input,.modal-grid select,.modal-grid textarea{color:var(--text);width:100%}
 .modal-grid input[type=color]{height:34px;padding:2px}
-.stack-form{display:flex;flex-direction:column;gap:10px}
-.stack-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
-.stack-form input{color:var(--text)}
 body.merchant-side nav.side{background:#7c2d12}
 body.merchant-side nav.side a.on,body.merchant-side nav.side a:hover{background:#9a3412}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.grid4 .card{margin:0}
+.form-card{max-width:620px;padding:24px 28px}
+.form-grid{display:grid;grid-template-columns:120px minmax(0,1fr);gap:14px 16px;align-items:center}
+.form-grid label{text-align:right;color:#374151;font-weight:600;font-size:14px}
+.form-grid input{width:100%;padding:9px 10px;color:var(--text)}
+.form-grid input:disabled{background:#f3f4f6;color:var(--muted)}
+.form-grid .hint{margin:0;font-size:12px}
+.form-grid .actions button{padding:8px 28px}
+@media (max-width:900px){.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.form-grid{grid-template-columns:1fr;gap:6px}.form-grid label{text-align:left;margin-top:8px}}

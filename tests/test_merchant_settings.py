@@ -167,3 +167,25 @@ def test_merchant_group_gets_notifications(merchant, account, session, client):
     order = session.query(m.Order).one()
     assert telegram.chat_for(order) == "-5488722855"
     assert "-5488722855" in telegram.known_chats(session)
+
+
+def test_agent_rate_and_hold(client, admin, merchant, account, session):
+    csrf = login(client)
+    data = {**SETTINGS, "ip_whitelist": "", "can_withdraw": "1", "csrf": csrf}
+    data.update(agent_rate="0.5", balance_hold="2000")
+    assert client.post(ADMIN + f"/merchants/{merchant.id}/settings", data=data).status_code == 200
+    session.refresh(merchant)
+    assert merchant.agent_rate == Decimal("0.5") and merchant.balance_hold == Decimal("2000")
+    receive(client, order_id="a1", amount=10000)
+    order = session.query(m.Order).filter_by(order_id="a1").one()
+    assert order.agent_fee == Decimal("50.00")  # 0.5% of 10,000; merchant fee unchanged
+    assert order.fee == Decimal("435.00")  # 4% + 35
+    # Held balance cannot be withdrawn: 3,000 balance - 2,000 hold leaves 1,000 usable.
+    merchant.balance = Decimal("3000")
+    session.commit()
+    assert withdraw(client, amount=1000)["msg"] == "Insufficient balance."
+    merchant.balance_hold = Decimal("0")
+    session.commit()
+    assert withdraw(client, amount=1000)["code"] == 200
+    bad = client.post(ADMIN + f"/merchants/{merchant.id}/settings", data={**data, "agent_rate": "-1"})
+    assert "中人" in bad.text or bad.status_code == 400

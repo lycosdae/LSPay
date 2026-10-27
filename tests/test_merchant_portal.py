@@ -2,6 +2,7 @@ import re
 from decimal import Decimal
 
 from lspay import models as m
+from lspay.timeutil import now_tw
 from lspay.web.auth import hash_password
 
 from .conftest import ADMIN
@@ -111,3 +112,29 @@ def test_admin_sets_password_and_switches(client, admin, merchant, session):
     assert mlogin(client, "xinxin1688", "merchantpw").status_code == 303
     txt = client.post(ADMIN + f"/merchants/{merchant.id}/info.txt", data={"csrf": csrf}).content.decode()
     assert "後台網址: http://localhost:8000/merchant" in txt and "後台帳號: xinxin1688" in txt
+
+
+def test_home_cards(client, merchant, session):
+    setup_merchant(session, merchant)
+    merchant.balance_frozen = Decimal("500")
+    merchant.balance_hold = Decimal("1000")
+    session.add(
+        m.Order(
+            merchant_id=merchant.id,
+            type=m.TYPE_RECEIVE,
+            order_id="h1",
+            order_sid="S-h1",
+            amount=Decimal("1234"),
+            fee=0,
+            status=m.ST_DONE,
+            finish_time=now_tw(),
+            payer="王小名",
+        )
+    )
+    session.commit()
+    mlogin(client)
+    home = client.get(MP).text
+    for label in ("商戶餘額", "暫時凍結(待出款)", "可動用餘額", "凍結金額", "本月累計代付筆數", "昨日累計代收交易量"):
+        assert label in home
+    assert "10,500" in home and "9,000" in home and "1,234" in home
+    assert "費率" not in home

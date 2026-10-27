@@ -8,6 +8,8 @@ CSRF token for the merchant's forms.
 
 import hmac
 import secrets
+from datetime import timedelta
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
@@ -20,8 +22,9 @@ from .. import models as m
 from .. import services, telegram
 from ..config import settings
 from ..db import get_db
+from ..timeutil import now_tw
 from .auth import clear_failures, login_blocked, record_failure, verify_password
-from .routes import merchant_day_stats, templates
+from .routes import templates
 
 MP = settings.merchant_path
 COOKIE = "lspay_merchant"
@@ -130,8 +133,26 @@ def logout():
 
 @router.get("", response_class=HTMLResponse)
 def home(request: Request, merchant=Depends(current_merchant), db: Session = Depends(get_db)):
-    stats = merchant_day_stats(db).get(merchant.id, {"today": {}, "yesterday": {}})
-    return page(request, "merchant/home.html", merchant, stats=stats, api_url=settings.base_url)
+    return page(request, "merchant/home.html", merchant, stats=period_stats(db, merchant.id))
+
+
+def period_stats(db: Session, merchant_id: int) -> dict:
+    """Completed orders today / yesterday / this month: {period: {type: (count, sum)}}."""
+    today = now_tw().replace(hour=0, minute=0, second=0, microsecond=0)
+    starts = {"today": today, "yesterday": today - timedelta(days=1), "month": today.replace(day=1)}
+    since = min(starts.values())
+    rows = db.execute(
+        select(m.Order.type, m.Order.finish_time, m.Order.amount).where(
+            m.Order.merchant_id == merchant_id, m.Order.status == m.ST_DONE, m.Order.finish_time >= since
+        )
+    ).all()
+    out = {key: {m.TYPE_RECEIVE: [0, Decimal(0)], m.TYPE_WITHDRAW: [0, Decimal(0)]} for key in starts}
+    for otype, finished, amount in rows:
+        for key, start in starts.items():
+            if finished >= start and (key != "yesterday" or finished < today):
+                out[key][otype][0] += 1
+                out[key][otype][1] += amount
+    return out
 
 
 @router.get("/orders/{kind}", response_class=HTMLResponse)

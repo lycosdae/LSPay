@@ -339,6 +339,7 @@ def create_receive(db: Session, merchant: m.Merchant, data: dict, source: str = 
         payer_pid=pid,
         amount=amount,
         fee=calc_fee(amount, merchant.receive_fee_rate, merchant.receive_fee_fixed),
+        agent_fee=calc_fee(amount, merchant.agent_rate),
         callback=callback,
         message=message,
         bank_no_check=",".join(f"{c}-{n}" for c, n in accounts),
@@ -388,7 +389,7 @@ def create_withdraw(db: Session, merchant: m.Merchant, data: dict, source: str =
     total = amount + fee
     # Lock the merchant row while moving money between balance and frozen.
     locked = db.scalar(select(m.Merchant).where(m.Merchant.id == merchant.id).with_for_update())
-    if locked.balance < total:
+    if locked.balance - locked.balance_hold < total:
         raise ApiError("Insufficient balance.")
     locked.balance -= total
     locked.balance_frozen += total
@@ -405,6 +406,7 @@ def create_withdraw(db: Session, merchant: m.Merchant, data: dict, source: str =
         payer_pid=pid,
         amount=amount,
         fee=fee,
+        agent_fee=calc_fee(amount, merchant.agent_rate),
         callback=callback,
         message=message,
         bank_code=bank_code,
@@ -663,6 +665,7 @@ def create_member_deposit(db: Session, member: m.Member, amount_text: str) -> m.
         payer_pid=member.pid,
         amount=amount,
         fee=calc_fee(amount, merchant.receive_fee_rate, merchant.receive_fee_fixed),
+        agent_fee=calc_fee(amount, merchant.agent_rate),
         message="LS支付儲值",
         bank_no_check=",".join(f"{a.bank_code}-{a.bank_no}" for a in member.bank_accounts),
         bank_no_check_title=member.name,

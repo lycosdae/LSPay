@@ -129,11 +129,21 @@ class Merchant(Base):
     password_hash: Mapped[str] = mapped_column(String(128), default="", server_default="")
     allow_manual_withdraw: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     allow_manual_receive: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # 中人 (agent) commission in percent of every order amount, paid by the platform out of its fees.
+    agent_rate: Mapped[Decimal] = mapped_column(Numeric(6, 3), default=Decimal("0"), server_default=text("0"))
+    # Amount the admin holds back from withdrawals (凍結金額), on top of pending withdrawals.
+    balance_hold: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default=text("0"))
     note: Mapped[str] = mapped_column(Text, default="", server_default="")
+
+    # ``balance`` already excludes ``balance_frozen`` (pending withdrawals move
+    # from one to the other), so the total is their sum.
+    @property
+    def total_balance(self) -> Decimal:
+        return self.balance + self.balance_frozen
 
     @property
     def available_balance(self) -> Decimal:
-        return self.balance - self.balance_frozen
+        return self.balance - self.balance_hold
 
 
 class Team(Base):
@@ -251,6 +261,8 @@ class Order(Base):
     payer_pid: Mapped[str] = mapped_column(String(20), default="")
     amount: Mapped[Decimal] = mapped_column(Money)
     fee: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"))
+    # 中人 commission for this order (amount x merchant.agent_rate), fixed when the order is created.
+    agent_fee: Mapped[Decimal] = mapped_column(Money, default=Decimal("0"), server_default=text("0"))
 
     status: Mapped[int] = mapped_column(Integer, default=ST_NEW, index=True)
     is_finish: Mapped[bool] = mapped_column(Boolean, default=False)
