@@ -1,4 +1,5 @@
 import re
+from urllib.parse import quote
 
 from lspay import models as m
 
@@ -137,3 +138,21 @@ def test_admin_only_reachable_at_secret_path(client, admin):
     assert page.status_code == 200 and page.headers["x-robots-tag"] == "noindex, nofollow"
     login(client)
     assert 'href="/console-t3st/members"' in client.get(ADMIN).text
+
+
+def test_merchant_info_txt(client, admin, session):
+    csrf = login(client)
+    client.post(ADMIN + "/merchants", data={"name": "rs 1688", "csrf": csrf})
+    mc = session.query(m.Merchant).one()
+    page = client.get(ADMIN + "/merchants").text
+    assert f"/merchants/{mc.id}/info.txt" in page
+    assert client.post(ADMIN + f"/merchants/{mc.id}/info.txt", data={"csrf": "bad"}).status_code in (400, 403)
+    res = client.post(ADMIN + f"/merchants/{mc.id}/info.txt", data={"csrf": csrf})
+    assert res.status_code == 200 and "attachment" in res.headers["content-disposition"]
+    assert quote("測試商戶-0001rs1688_") in res.headers["content-disposition"]
+    text = res.content.decode("utf-8")
+    assert text.startswith("測試環境\r\n商戶名: rs 1688")
+    assert "API URL: http://localhost:8000" in text and "Client sid: 0001" in text
+    assert f"API Key: {mc.api_key}" in text and f"Sign Key: {mc.sign_key}" in text
+    assert "回調IP:" in text
+    assert session.query(m.AuditLog).filter_by(action="merchant_info_download").count() == 1

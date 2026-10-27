@@ -20,6 +20,7 @@
   <td>
     <form id="{{ fid }}" class="inline" method="post" action="{{ admin }}/merchants">{{ csrf_field(csrf) }}<input type="hidden" name="merchant_id" value="{{ mc.id }}"><button type="submit">儲存</button></form>
     <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/keys">{{ csrf_field(csrf) }}<button class="sec">查看金鑰</button></form>
+    <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/info.txt">{{ csrf_field(csrf) }}<button class="sec">下載 txt</button></form>
     <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/keys" onsubmit="return confirm('更換後舊金鑰立即失效，確定？')">{{ csrf_field(csrf) }}<input type="hidden" name="rotate" value="1"><button class="bad">更換金鑰</button></form>
   </td>
 </tr>
@@ -27,6 +28,7 @@
 <tr><td colspan="10" class="wrap" style="background:#fffbeb">
   Client SID：<code>{{ mc.client_sid }}</code>　API Key：<code>{{ mc.api_key }}</code>　Sign Key：<code>{{ mc.sign_key }}</code>
   <span class="muted">（只在此次顯示，請妥善保存）</span>
+  <form class="inline" method="post" action="{{ admin }}/merchants/{{ mc.id }}/info.txt" style="margin-left:8px">{{ csrf_field(csrf) }}<button type="submit">下載商戶資料 txt</button></form>
 </td></tr>
 {% endif %}
 {% else %}<tr><td colspan="10" class="muted">尚無商戶</td></tr>{% endfor %}

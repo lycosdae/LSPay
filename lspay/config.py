@@ -19,6 +19,10 @@ class Settings:
     # Secret URL prefix for the admin web, e.g. "/console-8f3k2x9q". Only people
     # who know it can reach the login page; every other path returns 404.
     admin_path: str = field(default_factory=lambda: "/" + os.getenv("ADMIN_PATH", "admin").strip().strip("/"))
+    # Label printed on merchant info files, e.g. 正式環境 / 測試環境. Empty = guess from BASE_URL.
+    env_name: str = field(default_factory=lambda: os.getenv("LSPAY_ENV_NAME", "").strip())
+    # Public IPs merchant callbacks come from, comma separated (for merchants' whitelists).
+    callback_ips: str = field(default_factory=lambda: os.getenv("CALLBACK_IPS", ""))
     session_secret: str = field(default_factory=lambda: os.getenv("SESSION_SECRET", ""))
     cookie_secure: bool = field(default_factory=lambda: _bool("COOKIE_SECURE", False))
 
@@ -33,6 +37,13 @@ class Settings:
     telegram_chat_id: str = field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID", ""))
     # Value Telegram sends in X-Telegram-Bot-Api-Secret-Token on webhook calls.
     telegram_webhook_secret: str = field(default_factory=lambda: os.getenv("TELEGRAM_WEBHOOK_SECRET", ""))
+
+    @property
+    def env_label(self) -> str:
+        if self.env_name:
+            return self.env_name
+        local = any(h in self.base_url for h in ("localhost", "127.0.0.1"))
+        return "測試環境" if local else "正式環境"
 
     @property
     def telegram_enabled(self) -> bool:

@@ -1,14 +1,15 @@
 """Admin web (server-rendered)."""
 
 import pathlib
+import re
 import secrets
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -768,6 +769,51 @@ def merchant_keys(
     db.commit()
     request.session["reveal"] = merchant.id
     return redirect("/merchants", "✅ 已更換金鑰" if rotate else None, request)
+
+
+def merchant_info_text(merchant: m.Merchant) -> str:
+    ips = [ip.strip() for ip in settings.callback_ips.split(",") if ip.strip()]
+    lines = [
+        settings.env_label,
+        f"商戶名: {merchant.name}",
+        "",
+        "API資訊",
+        "=" * 47,
+        f"API URL: {settings.base_url}",
+        f"Client sid: {merchant.client_sid}",
+        f"API Key: {merchant.api_key}",
+        f"Sign Key: {merchant.sign_key}",
+        "",
+        "回調IP:",
+        *(ips or ["（尚未設定，請洽 LSPay 管理員）"]),
+        "",
+    ]
+    return "\r\n".join(lines)
+
+
+@router.post("/merchants/{mid}/info.txt")
+def merchant_info_download(
+    mid: int,
+    user=Depends(require_admin),
+    db: Session = Depends(get_db),
+    _=Depends(check_csrf),
+):
+    merchant = db.get(m.Merchant, mid)
+    if merchant is None:
+        raise HTTPException(404)
+    db.add(m.AuditLog(actor=user.label, action="merchant_info_download", detail=merchant.name))
+    db.commit()
+    prefix = settings.env_label.replace("環境", "")
+    safe_name = re.sub(r'[\\/:*?"<>|\s]+', "", merchant.name)
+    filename = f"{prefix}商戶-{merchant.client_sid}{safe_name}_{now_tw():%Y%m%d%H%M%S}.txt"
+    headers = {
+        "Content-Disposition": f'attachment; filename="merchant-{merchant.client_sid}.txt"; '
+        f"filename*=UTF-8''{quote(filename)}",
+        "Cache-Control": "no-store",
+    }
+    return Response(
+        merchant_info_text(merchant).encode("utf-8"), media_type="text/plain; charset=utf-8", headers=headers
+    )
 
 
 @router.post("/merchants/{mid}/balance")
